@@ -1,7 +1,8 @@
 import time
-import sys
 import signal
-import schedule
+import datetime as dt
+from scheduler import Scheduler
+
 from . import config
 from .watcher import get_next_file
 from .mover import move_file
@@ -17,11 +18,11 @@ def signal_handler(sig, frame):
     keep_running = False
 
 def process_inbox():
-    """Il 'Job' che lo scheduler eseguirà ad ogni intervallo."""
+    """Il Job che lo scheduler eseguirà ciclicamente."""
     target_file = get_next_file(config.INBOX)
     
     if not target_file:
-        return # Nessun file, esce e aspetta il prossimo giro
+        return 
         
     config.logger.info(f"file={target_file.name} status=detected")
 
@@ -29,7 +30,7 @@ def process_inbox():
     try:
         processing_file = move_file(target_file, config.ARCHIVE)
     except Exception:
-        return # Riproverà al prossimo ciclo
+        return 
 
     # STEP 3 & 4 — Chunked Read & Dispatch
     try:
@@ -42,9 +43,8 @@ def process_inbox():
             future = dispatcher.submit_chunk(chunk, metadata)
             chunk_futures.append(future)
         
-        # Attendiamo che tutti i chunk del file siano finiti
         for f in chunk_futures:
-            f.result() # Solleva eventuali eccezioni
+            f.result() 
             
         config.logger.info(f"file={processing_file.name} all_chunks={len(chunk_futures)} status=complete")
 
@@ -55,7 +55,6 @@ def process_inbox():
 def main():
     global dispatcher
     
-    # Setup graceful shutdown
     signal.signal(signal.SIGINT, signal_handler)
     signal.signal(signal.SIGTERM, signal_handler)
 
@@ -64,15 +63,19 @@ def main():
     
     dispatcher = Dispatcher()
 
-    # 1. Configura lo scheduler usando la variabile d'ambiente
-    schedule.every(config.POLL_INTERVAL).seconds.do(process_inbox)
+    # Inizializza lo scheduler corretto di PyPI
+    schedule = Scheduler()
+    
+    # Usa cyclic con timedelta in base al POLL_INTERVAL del config
+    schedule.cyclic(dt.timedelta(seconds=config.POLL_INTERVAL), process_inbox)
+    
     config.logger.info(f"status=scheduler_ready interval={config.POLL_INTERVAL}s")
 
-    # 2. Loop principale pulito
     try:
         while keep_running:
-            schedule.run_pending()
-            time.sleep(60) # Sleep di base per non sforzare la CPU
+            # Esegue i job in coda se il tempo è scaduto
+            schedule.exec_jobs()
+            time.sleep(1)
 
     finally:
         config.logger.info("status=shutting_down waiting_for_workers")
