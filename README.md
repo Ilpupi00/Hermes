@@ -36,7 +36,7 @@ Hermes is **Process 2** in a two-process system. It shares no memory, no imports
 
 ```
 hermes/
-├── hermes/
+├── src/
 │   ├── __init__.py
 │   ├── main.py          # Entry point — starts the loop
 │   ├── config.py        # Loads all settings from env / .env file
