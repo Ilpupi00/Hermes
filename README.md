@@ -75,6 +75,7 @@ Hermes/
 ### Installation
 
 Using `uv` (Recommended):
+
 ```bash
 git clone https://github.com/your-org/hermes.git
 cd hermes
@@ -82,6 +83,7 @@ uv sync
 ```
 
 Using standard `pip`:
+
 ```bash
 git clone https://github.com/your-org/hermes.git
 cd hermes
@@ -106,11 +108,13 @@ mkdir -p uploads_web processed failed
 ### Run
 
 Using `uv` (Recommended):
+
 ```bash
 uv run python -m src.main
 ```
 
 Using python directly:
+
 ```bash
 python -m src.main
 ```
@@ -244,7 +248,6 @@ Hermes uses Python's standard `logging` library with a structured format:
 - [x] ThreadPoolExecutor dispatch
 - [x] Pluggable `WorkerBase` interface
 - [x] Retry with exponential backoff (`tenacity`)
-- [ ] Per-file `.meta.json` result in `./processed`
 - [ ] Health check HTTP endpoint
 - [ ] Prometheus metrics exporter
 - [ ] Docker + docker-compose setup
