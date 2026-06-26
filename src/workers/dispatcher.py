@@ -13,7 +13,7 @@ def get_worker_instance() -> WorkerBase:
 
 class Dispatcher:
     def __init__(self):
-        # Usiamo config.MAX_WORKERS dinamicamente
+        # Inizializzato usando config.MAX_WORKERS (valore al momento dello startup)
         self.executor = ThreadPoolExecutor(max_workers=config.MAX_WORKERS)
         self.worker = get_worker_instance()
         config.logger.info(f"status=dispatcher_ready max_workers={config.MAX_WORKERS} worker_class={config.WORKER_CLASS}")

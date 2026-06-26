@@ -248,7 +248,7 @@ Hermes uses Python's standard `logging` library with a structured format:
 - [x] ThreadPoolExecutor dispatch
 - [x] Pluggable `WorkerBase` interface
 - [x] Retry with exponential backoff (`tenacity`)
-- [ ] Health check HTTP endpoint
+- [x] Health check HTTP endpoint
 - [ ] Prometheus metrics exporter
 - [ ] Docker + docker-compose setup
 - [ ] Dynamic `MAX_WORKERS` reload without restart
