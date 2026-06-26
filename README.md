@@ -46,7 +46,9 @@ hermes/
     │   ├── config.py           # Variabili d'ambiente
     │   ├── watcher.py          # Polling directory
     │   ├── mover.py            # Rename atomico
-    │   └── reader.py           # Chunking pandas
+    │   ├── reader.py           # Chunking pandas
+    │   ├── worker_base.py      # Classe baseWorker
+    │
     ├── db/
     │   ├── __init__.py
     │   ├── database.py         # Engine e SessionMaker
@@ -225,7 +227,7 @@ Hermes uses Python's standard `logging` library with a structured format:
 - [x] Pandas chunked reading
 - [x] ThreadPoolExecutor dispatch
 - [x] Pluggable `WorkerBase` interface
-- [ ] Retry with exponential backoff (`tenacity`)
+- [x] Retry with exponential backoff (`tenacity`)
 - [ ] Per-file `.meta.json` result in `./processed`
 - [ ] Health check HTTP endpoint
 - [ ] Prometheus metrics exporter

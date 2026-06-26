@@ -3,7 +3,7 @@ import signal
 import datetime as dt
 from scheduler import Scheduler
 
-from . import config
+from .core import config
 from .core.watcher import get_next_file
 from .core.mover import move_file
 from .core.reader import read_chunks
@@ -66,8 +66,8 @@ def process_inbox():
         config.logger.info(f"file={processing_file.name} all_chunks={len(chunk_futures)} status=complete")
 
     except Exception as e:
-            config.logger.error(f"file={processing_file.name} status=failed_processing error={str(e)}")
-            move_file(processing_file, config.FAILED)
+        config.logger.error(f"file={processing_file.name} status=failed_processing error={str(e)}")
+        move_file(processing_file, config.FAILED)
 
 def main():
     global dispatcher

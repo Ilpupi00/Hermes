@@ -19,3 +19,4 @@ def get_next_file(inbox_path: Path)-> Optional[Path]:
     
     except Exception as e:
         logger.error(f"status=watcher_error error={str(e)}")
+        return None
