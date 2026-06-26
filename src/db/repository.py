@@ -2,19 +2,21 @@ from sqlalchemy.orm import Session
 from .models import Esecuzione, Task, Utente, ModelloLLM, Risultato
 
 def get_execution_context(db: Session, id_esecuzione: int) -> dict:
-    # Aggiunti Task.temperatura e Task.max_tokens alla SELECT
-    result = db.query(
-        Utente.hub_token, 
-        Task.prompt, 
-        ModelloLLM.nome_modello,
-        Task.temperatura,
-        Task.max_tokens
-    )\
-        .join(Task, Esecuzione.id_task == Task.id_task)\
-        .join(Utente, Task.id_utente == Utente.id_utente)\
-        .join(ModelloLLM, Task.id_modello == ModelloLLM.id_modello)\
-        .filter(Esecuzione.id_esecuzione == id_esecuzione)\
+    result = (
+        db.query(
+            Utente.hub_token, 
+            Task.prompt, 
+            ModelloLLM.nome_modello,
+            Task.temperatura,
+            Task.max_tokens
+        )
+        .select_from(Esecuzione)
+        .join(Task, Esecuzione.id_task == Task.id_task)
+        .join(Utente, Task.id_utente == Utente.id_utente)
+        .join(ModelloLLM, Task.id_modello == ModelloLLM.id_modello)
+        .filter(Esecuzione.id_esecuzione == id_esecuzione)
         .first()
+    )
         
     if not result:
         raise ValueError(f"Esecuzione {id_esecuzione} non trovata.")
@@ -37,4 +39,4 @@ def save_result(db: Session, id_esecuzione: int, id_file: int, id_riga_input: in
         stato=stato
     )
     db.add(nuovo_risultato)
-    db.commit()
+    db.flush()

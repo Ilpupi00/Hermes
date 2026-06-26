@@ -4,18 +4,18 @@ import requests
 import tenacity
 from tenacity import retry, stop_after_attempt, wait_exponential, before_sleep_log
 import logging
+import threading
 from huggingface_hub import InferenceClient
 from huggingface_hub.utils import HfHubHTTPError
 
 from ..core import config
 from ..db.db import SessionLocal
 from ..db import repository
-from .worker_base import WorkerBase
-
-class FatalWorkerError(Exception):
-    pass
+from .worker_base import WorkerBase, FatalWorkerError
 
 class LocalAIWorker(WorkerBase):
+    _validated_tokens = {}
+    _token_lock = threading.Lock()
     
     def process(self, chunk: pd.DataFrame, metadata: dict) -> dict:
         filename = metadata.get("filename")
@@ -48,26 +48,45 @@ class LocalAIWorker(WorkerBase):
             # Inizializza client Hugging Face
             client = InferenceClient(token=token)
             
-            for index, row in chunk.iterrows():
-                id_riga = row['id_riga_input']
-                dati_riga = row.drop('id_riga_input').to_dict()
-                prompt_finale = f"{prompt_base}\n\nDati:\n{dati_riga}"
-                
-                start_time = time.time()
-                try:
-                    # Passiamo temp_db e max_tok_db presi dal database!
-                    risposta = self._call_ai(client, modello, prompt_finale, temp_db, max_tok_db)
-                    tempo = round(time.time() - start_time, 2)
-                    repository.save_result(db, id_esecuzione, id_file, id_riga, risposta, tempo, "Completato")
-                except Exception as e:
-                    config.logger.error(f"Riga {id_riga} fallita: {str(e)}")
-                    repository.save_result(db, id_esecuzione, id_file, id_riga, str(e), 0.0, "Errore")
+            try:
+                for index, row in chunk.iterrows():
+                    # Cancellazione cooperativa
+                    cancel_event = metadata.get("cancel_event")
+                    if cancel_event and cancel_event.is_set():
+                        config.logger.warning(f"Process interrotto per il chunk {metadata.get('chunk_index')}")
+                        raise FatalWorkerError("Elaborazione interrotta per attivazione Circuit Breaker.")
+
+                    id_riga = row['id_riga_input']
+                    dati_riga = row.drop('id_riga_input').to_dict()
+                    prompt_finale = f"{prompt_base}\n\nDati:\n{dati_riga}"
+                    
+                    start_time = time.time()
+                    try:
+                        # Passiamo temp_db e max_tok_db presi dal database!
+                        risposta = self._call_ai(client, modello, prompt_finale, temp_db, max_tok_db)
+                        tempo = round(time.time() - start_time, 2)
+                        repository.save_result(db, id_esecuzione, id_file, id_riga, risposta, tempo, "Completato")
+                    except Exception as e:
+                        config.logger.error(f"Riga {id_riga} fallita: {str(e)}")
+                        repository.save_result(db, id_esecuzione, id_file, id_riga, str(e), 0.0, "Errore")
+                db.commit()
+            except Exception as db_err:
+                db.rollback()
+                if isinstance(db_err, FatalWorkerError):
+                    raise
+                config.logger.error(f"Errore durante commit del chunk: {str(db_err)}")
+                raise FatalWorkerError(f"Impossibile salvare i risultati del chunk: {str(db_err)}")
 
         return {"status": "ok", **metadata}
 
     def _is_token_valid(self, token: str) -> bool:
         if not token:
             return False
+            
+        with self._token_lock:
+            if token in self._validated_tokens:
+                return self._validated_tokens[token]
+                
         try:
             # Controllo reale su API Hugging Face
             response = requests.get(
@@ -75,7 +94,10 @@ class LocalAIWorker(WorkerBase):
                 headers={"Authorization": f"Bearer {token}"},
                 timeout=5
             )
-            return response.status_code == 200
+            is_valid = response.status_code == 200
+            with self._token_lock:
+                self._validated_tokens[token] = is_valid
+            return is_valid
         except Exception:
             return False
 

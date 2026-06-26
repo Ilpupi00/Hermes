@@ -1,6 +1,7 @@
 import time
 import signal
 import datetime as dt
+import threading
 from scheduler import Scheduler
 
 from .core import config
@@ -9,7 +10,7 @@ from .core.mover import move_file
 from .core.reader import read_chunks
 from .workers.dispatcher import Dispatcher
 import concurrent.futures
-from .workers.ai_worker import FatalWorkerError
+from .workers.worker_base import FatalWorkerError
 
 keep_running = True
 dispatcher = None
@@ -37,14 +38,20 @@ def process_inbox():
     # STEP 3 & 4 — Chunked Read & Dispatch
     try:
         chunk_futures = []
+        cancel_event = threading.Event()
         for idx, chunk in enumerate(read_chunks(processing_file, config.CHUNK_SIZE)):
-            metadata = {"filename": processing_file.name, "chunk_index": idx}
+            metadata = {
+                "filename": processing_file.name, 
+                "chunk_index": idx,
+                "cancel_event": cancel_event
+            }
             future = dispatcher.submit_chunk(chunk, metadata)
             chunk_futures.append(future)
         
         # Mappa dei futures per poterli tracciare
         # Implementazione CIRCUIT BREAKER
         has_fatal_error = False
+        has_nonfatal_error = False
         
         for future in concurrent.futures.as_completed(chunk_futures):
             try:
@@ -52,8 +59,10 @@ def process_inbox():
             except FatalWorkerError as fe:
                 config.logger.critical(f"status=CIRCUIT_BREAKER file={processing_file.name} reason='{str(fe)}'")
                 has_fatal_error = True
+                cancel_event.set()
                 break # Usciamo dal loop di attesa
             except Exception as e:
+                has_nonfatal_error = True
                 config.logger.error(f"Chunk fallito in modo non fatale: {str(e)}")
 
         # Se il Circuit Breaker è scattato, cancelliamo i task in coda non ancora partiti
@@ -63,7 +72,8 @@ def process_inbox():
             move_file(processing_file, config.FAILED)
             return # Esce dal processing di questo file
 
-        config.logger.info(f"file={processing_file.name} all_chunks={len(chunk_futures)} status=complete")
+        status = "complete_with_errors" if has_nonfatal_error else "complete"
+        config.logger.info(f"file={processing_file.name} all_chunks={len(chunk_futures)} status={status}")
 
     except Exception as e:
         config.logger.error(f"file={processing_file.name} status=failed_processing error={str(e)}")

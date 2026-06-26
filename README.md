@@ -35,10 +35,13 @@ Hermes is **Process 2** in a two-process system. It shares no memory, no imports
 ## Project Structure
 
 ```
-hermes/
+Hermes/
+├── pyproject.toml
 ├── requirements.txt
+├── uv.lock
 ├── .env
-└── hermes/
+├── .python-version
+└── src/
     ├── __init__.py
     ├── main.py                 # Entry point
     ├── core/
@@ -46,18 +49,17 @@ hermes/
     │   ├── config.py           # Variabili d'ambiente
     │   ├── watcher.py          # Polling directory
     │   ├── mover.py            # Rename atomico
-    │   ├── reader.py           # Chunking pandas
-    │   ├── worker_base.py      # Classe baseWorker
+    │   └── reader.py           # Chunking pandas
     │
     ├── db/
     │   ├── __init__.py
-    │   ├── database.py         # Engine e SessionMaker
+    │   ├── db.py               # Engine e SessionMaker
     │   ├── models.py           # Classi ORM SQLAlchemy (Tabelle)
     │   └── repository.py       # Le query (CRUD)
     └── workers/
         ├── __init__.py
         ├── dispatcher.py       # Gestione ThreadPool
-        ├── base.py             # Classe astratta
+        ├── worker_base.py      # Classe astratta baseWorker
         └── ai_worker.py        # La logica del modello con Circuit Breaker
 ```
 
@@ -72,6 +74,14 @@ hermes/
 
 ### Installation
 
+Using `uv` (Recommended):
+```bash
+git clone https://github.com/your-org/hermes.git
+cd hermes
+uv sync
+```
+
+Using standard `pip`:
 ```bash
 git clone https://github.com/your-org/hermes.git
 cd hermes
@@ -95,8 +105,14 @@ mkdir -p uploads_web processed failed
 
 ### Run
 
+Using `uv` (Recommended):
 ```bash
-python -m hermes.main
+uv run python -m src.main
+```
+
+Using python directly:
+```bash
+python -m src.main
 ```
 
 ---
