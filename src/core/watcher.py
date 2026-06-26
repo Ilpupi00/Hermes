@@ -1,6 +1,7 @@
 import os
 from pathlib import Path
 from typing import Optional
+# pyrefly: ignore [missing-import]
 from .config import logger
 
 def get_next_file(inbox_path: Path)-> Optional[Path]:
@@ -18,3 +19,4 @@ def get_next_file(inbox_path: Path)-> Optional[Path]:
     
     except Exception as e:
         logger.error(f"status=watcher_error error={str(e)}")
+        return None

@@ -35,25 +35,32 @@ Hermes is **Process 2** in a two-process system. It shares no memory, no imports
 ## Project Structure
 
 ```
-hermes/
-├── src/
-│   ├── __init__.py
-│   ├── main.py          # Entry point — starts the loop
-│   ├── config.py        # Loads all settings from env / .env file
-│   ├── watcher.py       # Polling loop — scans INBOX for new CSV files
-│   ├── mover.py         # Atomic os.rename() — prevents duplicate processing
-│   ├── reader.py        # pandas read_csv(chunksize=N) — memory-safe reading
-│   ├── dispatcher.py    # ThreadPoolExecutor — submits chunks to workers
-│   ├── worker_base.py   # Abstract base class — implement this for your project
-│   └── worker.py        # Default worker implementation (override per project)
-├── tests/
-│   ├── test_watcher.py
-│   ├── test_mover.py
-│   └── test_reader.py
-├── .env.example
+Hermes/
+├── pyproject.toml
 ├── requirements.txt
-├── Dockerfile
-└── README.md
+├── uv.lock
+├── .env
+├── .python-version
+└── src/
+    ├── __init__.py
+    ├── main.py                 # Entry point
+    ├── core/
+    │   ├── __init__.py
+    │   ├── config.py           # Variabili d'ambiente
+    │   ├── watcher.py          # Polling directory
+    │   ├── mover.py            # Rename atomico
+    │   └── reader.py           # Chunking pandas
+    │
+    ├── db/
+    │   ├── __init__.py
+    │   ├── db.py               # Engine e SessionMaker
+    │   ├── models.py           # Classi ORM SQLAlchemy (Tabelle)
+    │   └── repository.py       # Le query (CRUD)
+    └── workers/
+        ├── __init__.py
+        ├── dispatcher.py       # Gestione ThreadPool
+        ├── worker_base.py      # Classe astratta baseWorker
+        └── ai_worker.py        # La logica del modello con Circuit Breaker
 ```
 
 ---
@@ -67,6 +74,14 @@ hermes/
 
 ### Installation
 
+Using `uv` (Recommended):
+```bash
+git clone https://github.com/your-org/hermes.git
+cd hermes
+uv sync
+```
+
+Using standard `pip`:
 ```bash
 git clone https://github.com/your-org/hermes.git
 cd hermes
@@ -90,8 +105,14 @@ mkdir -p uploads_web processed failed
 
 ### Run
 
+Using `uv` (Recommended):
 ```bash
-python -m hermes.main
+uv run python -m src.main
+```
+
+Using python directly:
+```bash
+python -m src.main
 ```
 
 ---
@@ -222,7 +243,7 @@ Hermes uses Python's standard `logging` library with a structured format:
 - [x] Pandas chunked reading
 - [x] ThreadPoolExecutor dispatch
 - [x] Pluggable `WorkerBase` interface
-- [ ] Retry with exponential backoff (`tenacity`)
+- [x] Retry with exponential backoff (`tenacity`)
 - [ ] Per-file `.meta.json` result in `./processed`
 - [ ] Health check HTTP endpoint
 - [ ] Prometheus metrics exporter
