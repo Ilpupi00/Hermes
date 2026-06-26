@@ -2,7 +2,7 @@ import importlib
 from concurrent.futures import ThreadPoolExecutor
 from typing import Type
 from .worker_base import WorkerBase
-from .config import logger, WORKER_CLASS, MAX_WORKERS
+from ..core.config import logger, WORKER_CLASS, MAX_WORKERS
 
 def get_worker_instance() -> WorkerBase:
     """Carica dinamicamente la classe worker dal config (HERMES_WORKER_CLASS)."""

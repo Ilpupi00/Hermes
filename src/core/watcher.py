@@ -1,6 +1,7 @@
 import os
 from pathlib import Path
 from typing import Optional
+# pyrefly: ignore [missing-import]
 from .config import logger
 
 def get_next_file(inbox_path: Path)-> Optional[Path]:

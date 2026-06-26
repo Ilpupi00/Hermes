@@ -36,24 +36,27 @@ Hermes is **Process 2** in a two-process system. It shares no memory, no imports
 
 ```
 hermes/
-├── src/
-│   ├── __init__.py
-│   ├── main.py          # Entry point — starts the loop
-│   ├── config.py        # Loads all settings from env / .env file
-│   ├── watcher.py       # Polling loop — scans INBOX for new CSV files
-│   ├── mover.py         # Atomic os.rename() — prevents duplicate processing
-│   ├── reader.py        # pandas read_csv(chunksize=N) — memory-safe reading
-│   ├── dispatcher.py    # ThreadPoolExecutor — submits chunks to workers
-│   ├── worker_base.py   # Abstract base class — implement this for your project
-│   └── worker.py        # Default worker implementation (override per project)
-├── tests/
-│   ├── test_watcher.py
-│   ├── test_mover.py
-│   └── test_reader.py
-├── .env.example
 ├── requirements.txt
-├── Dockerfile
-└── README.md
+├── .env
+└── hermes/
+    ├── __init__.py
+    ├── main.py                 # Entry point
+    ├── core/
+    │   ├── __init__.py
+    │   ├── config.py           # Variabili d'ambiente
+    │   ├── watcher.py          # Polling directory
+    │   ├── mover.py            # Rename atomico
+    │   └── reader.py           # Chunking pandas
+    ├── db/
+    │   ├── __init__.py
+    │   ├── database.py         # Engine e SessionMaker
+    │   ├── models.py           # Classi ORM SQLAlchemy (Tabelle)
+    │   └── repository.py       # Le query (CRUD)
+    └── workers/
+        ├── __init__.py
+        ├── dispatcher.py       # Gestione ThreadPool
+        ├── base.py             # Classe astratta
+        └── ai_worker.py        # La logica del modello con Circuit Breaker
 ```
 
 ---

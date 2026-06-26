@@ -4,3 +4,5 @@ scheduler==0.8.4
 tenacity==8.2.3
 huggingface_hub==0.20.3
 psycopg2-binary==2.9.9
+sqlalchemy==2.0.28
+greenlet==3.0.0
