@@ -63,16 +63,16 @@ hermes/
 ### Prerequisites
 
 - Python 3.10+
-- pip
+- [uv](https://github.com/astral-sh/uv)
 
 ### Installation
 
 ```bash
 git clone https://github.com/your-org/hermes.git
 cd hermes
-python -m venv .venv
+uv venv
 source .venv/bin/activate       # Windows: .venv\Scripts\activate
-pip install -r requirements.txt
+uv pip install -r requirements.txt
 ```
 
 ### Setup
