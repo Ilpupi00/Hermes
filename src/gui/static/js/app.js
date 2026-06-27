@@ -1,9 +1,15 @@
-const ws = new WebSocket(`ws://${window.location.host}/ws/logs`);
+const wsProto = window.location.protocol === 'https:' ? 'wss' : 'ws';
+const ws = new WebSocket(`${wsProto}://${window.location.host}/ws/logs`);
 const terminal = document.getElementById('terminal-output');
 const terminalContainer = document.getElementById('terminal-container');
+const MAX_TERMINAL_LINES = 2000;
 
 ws.onmessage = function(event) {
     terminal.textContent += event.data + "\n";
+    const lines = terminal.textContent.split("\n");
+    if (lines.length > MAX_TERMINAL_LINES) {
+        terminal.textContent = lines.slice(-MAX_TERMINAL_LINES).join("\n");
+    }
     terminalContainer.scrollTop = terminalContainer.scrollHeight;
 };
 
@@ -40,22 +46,23 @@ async function updateStatus() {
                 const dotColor = isWorking ? 'bg-blue-500 animate-pulse' : 'bg-gray-500';
                 
                 // NOTA: Aggiunta la classe 'group' e i bottoni di Edit/Delete
+                const safeLabel = String(name).replace(/[&<>"'`]/g, '');
                 poolsContainer.innerHTML += `
                     <div class="pool-card bg-gray-800 p-5 rounded-lg border ${borderColor} shadow-md transition-all relative">
                         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
                             <h4 style="font-weight:bold; color:#f3f4f6; display:flex; align-items:center; gap:8px;">
                                 <span style="width:12px; height:12px; border-radius:50%; display:inline-block;" class="${dotColor}"></span>
-                                ${name.toUpperCase()}
+                                ${safeLabel.toUpperCase()}
                             </h4>
                             <div style="display:flex; align-items:center; gap:12px;">
                                 <span style="background:#111827; font-size:12px; padding:4px 8px; border-radius:4px; color:#9ca3af; border:1px solid #374151;">
                                     Max Workers: ${stats.max_workers}
                                 </span>
                                 <div class="pool-actions" style="display:flex; gap:8px;">
-                                    <button onclick="editPool('${name}', ${stats.max_workers})"
+                                    <button onclick='editPool(${JSON.stringify(name)}, ${stats.max_workers})'
                                         style="color:#60a5fa; background:none; border:none; cursor:pointer; font-size:16px; padding:2px 6px; border-radius:4px;"
                                         title="Modifica Pool">✏️</button>
-                                    <button onclick="deletePool('${name}')"
+                                    <button onclick='deletePool(${JSON.stringify(name)})'
                                         style="color:#f87171; background:none; border:none; cursor:pointer; font-size:16px; padding:2px 6px; border-radius:4px;"
                                         title="Elimina Pool">🗑️</button>
                                 </div>

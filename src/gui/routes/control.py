@@ -5,7 +5,7 @@ import threading
 import time
 import datetime as dt
 from fastapi import APIRouter
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from .. import state
 from ...core import config
@@ -15,16 +15,16 @@ from scheduler import Scheduler
 router = APIRouter(prefix="/api")
 
 class StartParams(BaseModel):
-    workers: int
-    interval: int
+    workers: int = Field(..., ge=1)
+    interval: int = Field(..., ge=1)
 
 class PoolParams(BaseModel):
-    name: str
-    workers: int
+    name: str = Field(..., min_length=1, max_length=64)
+    workers: int = Field(..., ge=1)
 
 class UpdatePoolParams(BaseModel):
-    new_name: str
-    workers: int
+    new_name: str = Field(..., min_length=1, max_length=64)
+    workers: int = Field(..., ge=1)
 
 @router.get("/status")
 async def get_status():

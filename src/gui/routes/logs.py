@@ -1,5 +1,6 @@
 from fastapi import APIRouter, WebSocket, Query
 from fastapi.responses import PlainTextResponse
+from starlette.websockets import WebSocketDisconnect
 from datetime import datetime
 from .. import state
 
@@ -12,7 +13,9 @@ async def websocket_logs(websocket: WebSocket):
     try:
         while True:
             await websocket.receive_text()  # Mantiene la connessione viva
-    except:
+    except WebSocketDisconnect:
+        pass
+    finally:
         if websocket in state.connected_websockets:
             state.connected_websockets.remove(websocket)
 
@@ -30,7 +33,10 @@ async def download_logs(
         start_dt = datetime.fromisoformat(start) if start else None
         end_dt = datetime.fromisoformat(end) if end else None
     except ValueError:
-        start_dt = end_dt = None
+        return PlainTextResponse(
+            content="Parametri 'start'/'end' non validi: usare formato ISO (es. 2026-06-27T00:00:00).",
+            status_code=400,
+        )
 
     filtered = []
     for entry in entries:

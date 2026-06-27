@@ -22,9 +22,9 @@ class WsLogHandler(logging.Handler):
             "timestamp": now.isoformat(timespec="seconds"),
             "message": msg
         })
-        # Mantieni il buffer entro il limite
-        if len(log_buffer) > MAX_LOG_BUFFER:
-            del log_buffer[0]
+        # Mantieni il buffer entro il limite (trimming a batch per evitare O(n) ad ogni log)
+        if len(log_buffer) > MAX_LOG_BUFFER + 100:
+            del log_buffer[:-MAX_LOG_BUFFER]
 
         if not connected_websockets or not fastapi_loop:
             return
