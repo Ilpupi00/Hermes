@@ -56,6 +56,21 @@ Hermes/
     │   ├── db.py               # Engine e SessionMaker
     │   ├── models.py           # Classi ORM SQLAlchemy (Tabelle)
     │   └── repository.py       # Le query (CRUD)
+    ├── gui/                    # Interfaccia Control Room
+    │   ├── app.py              # Entry point GUI (FastAPI + PyWebView)
+    │   ├── state.py            # Stato globale condiviso (processi, ws)
+    │   ├── pages/
+    │   │   └── index.html      # UI Dashboard (Tailwind CSS)
+    │   ├── static/
+    │   │   ├── css/style.css   # Stili personalizzati (scrollbar, bottoni)
+    │   │   └── js/
+    │   │       ├── app.js      # Controller Javascript frontend
+    │   │       └── tailwind-config.js # Configurazione Tailwind
+    │   └── routes/
+    │       ├── __init__.py     # Aggregatore router
+    │       ├── control.py      # Rotte controllo motore e thread-pool
+    │       ├── dashboard.py    # Rotta render dashboard
+    │       └── logs.py         # Streaming log (WS) ed export (.txt)
     └── workers/
         ├── __init__.py
         ├── dispatcher.py       # Gestione ThreadPool
@@ -117,6 +132,20 @@ Using python directly:
 
 ```bash
 python -m src.main
+```
+
+### Run GUI Control Room
+
+Per avviare la GUI Control Room (FastAPI + PyWebView):
+
+Using `uv` (Recommended):
+```bash
+uv run python -m src.gui.app
+```
+
+Using python directly:
+```bash
+python -m src.gui.app
 ```
 
 ---
@@ -240,6 +269,21 @@ Hermes uses Python's standard `logging` library with a structured format:
 
 ---
 
+## GUI Control Room & Multi-Pool Management
+
+Hermes offre una dashboard desktop ibrida per monitorare ed orchestrare il sistema visivamente:
+
+- **Stato Motore Live**: Avvia e ferma il loop di polling principale.
+- **Gestione Dinamica dei Thread Pool**:
+  - Aggiungi nuovi pool dedicati (es. `test_llm`, `produzione`) specificando il numero dei worker.
+  - Modifica / Rinomina o ridimensiona i worker a caldo (senza riavviare il motore).
+  - Elimina i pool non più necessari (i task in coda verranno annullati).
+  - **Failsafe**: È sempre obbligatorio avere almeno un pool attivo se il motore è online. Se viene richiesto un pool eliminato/inesistente, il sistema devia automaticamente il task sul primo pool disponibile in elenco (fallback).
+- **Terminale Log Integrato**: logs inviati in tempo reale tramite WebSocket con timestamp.
+- **Export dei Log**: Scarica un file `.txt` pulito con intestazione, con la possibilità di filtrare le righe per data ed ora di inizio/fine.
+
+---
+
 ## Roadmap
 
 - [x] Core polling loop
@@ -249,9 +293,10 @@ Hermes uses Python's standard `logging` library with a structured format:
 - [x] Pluggable `WorkerBase` interface
 - [x] Retry with exponential backoff (`tenacity`)
 - [x] Health check HTTP endpoint
+- [x] GUI Dashboard (FastAPI + PyWebView)
+- [x] Dynamic `MAX_WORKERS` & Multi-Pool reload without restart
 - [ ] Prometheus metrics exporter
 - [ ] Docker + docker-compose setup
-- [ ] Dynamic `MAX_WORKERS` reload without restart
 
 ---
 
