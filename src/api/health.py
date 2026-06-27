@@ -28,7 +28,7 @@ class HealthCheckHandler(BaseHTTPRequestHandler):
         pass
 
 def start_health_server(port=8080):
-    """Avvia il server HTTP su un thread in background."""
+    # Avvia il server HTTP su un thread in background
     server = HTTPServer(('0.0.0.0', port), HealthCheckHandler)
     config.logger.info(f"status=health_server_started port={port} endpoint=/health")
     
