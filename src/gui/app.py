@@ -7,6 +7,7 @@ import logging
 import asyncio
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
+from prometheus_fastapi_instrumentator import Instrumentator
 
 from .routes import dashboard_router, control_router, logs_router
 from . import state
@@ -14,6 +15,9 @@ from ..core.config import logger # Importiamo il logger globale
 
 # Inizializza FastAPI
 app = FastAPI()
+
+# Strumentazione per esportare metriche Prometheus (latenza, status code, traffico, ecc.)
+Instrumentator().instrument(app).expose(app)
 
 @app.on_event("startup")
 async def startup_event():

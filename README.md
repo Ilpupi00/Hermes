@@ -295,7 +295,7 @@ Hermes offre una dashboard desktop ibrida per monitorare ed orchestrare il siste
 - [x] Health check HTTP endpoint
 - [x] GUI Dashboard (FastAPI + PyWebView)
 - [x] Dynamic `MAX_WORKERS` & Multi-Pool reload without restart
-- [ ] Prometheus metrics exporter
+- [x] Prometheus metrics exporter
 - [ ] Docker + docker-compose setup
 
 ---

@@ -115,3 +115,4 @@ fastapi
 uvicorn 
 websockets 
 pywebview
+prometheus-fastapi-instrumentator
