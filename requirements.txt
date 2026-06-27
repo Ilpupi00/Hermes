@@ -110,3 +110,9 @@ typing-inspection==0.4.2
     # via pydantic
 tzdata==2026.2
     # via pandas
+customtkinter
+fastapi 
+uvicorn 
+websockets 
+pywebview
+prometheus-fastapi-instrumentator

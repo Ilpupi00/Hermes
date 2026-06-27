@@ -1,0 +1,30 @@
+/* Custom scrollbar styling for a premium dark-mode feel */
+::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+
+::-webkit-scrollbar-track {
+    background: #111827; /* bg-gray-900 */
+}
+
+::-webkit-scrollbar-thumb {
+    background: #374151; /* bg-gray-700 */
+    border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: #4B5563; /* bg-gray-600 */
+}
+
+/* Pool card: bottoni azioni hover
+   Tailwind CDN non scannerizza classi iniettate via innerHTML,
+   quindi usiamo CSS vaniglia per garantire il funzionamento. */
+.pool-card .pool-actions {
+    opacity: 0;
+    transition: opacity 0.2s ease;
+}
+
+.pool-card:hover .pool-actions {
+    opacity: 1;
+}
