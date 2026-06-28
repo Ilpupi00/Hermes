@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/images/hermes_logo_v3.png" alt="Hermes Logo" width="220"/>
+  <img src="docs/images/hermes_logo_v3.png" alt="Hermes Logo" width="600"/>
 </p>
 
 <h1 align="center">⚡ Hermes</h1>
@@ -114,6 +114,7 @@ docker compose up -d --build
 ```
 
 This command will automatically:
+
 - Start a `postgres:16-alpine` database and initialize it with `schema_progetto.sql`.
 - Build and start the `hermes_app` container, mounting the local `uploads_web`, `processed`, and `failed` folders so you can easily drop CSV files from your host machine.
 - Expose the Control Room dashboard on port `8000`.
@@ -172,11 +173,13 @@ python -m src.main
 To start the GUI Control Room (FastAPI + PyWebView):
 
 Using `uv` (Recommended):
+
 ```bash
 uv run python -m src.gui.app
 ```
 
 Using python directly:
+
 ```bash
 python -m src.gui.app
 ```
