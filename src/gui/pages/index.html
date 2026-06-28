@@ -1,118 +1,224 @@
 <!DOCTYPE html>
-<html lang="it" class="dark">
+<html lang="it">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Hermes Control Room</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script src="/static/js/tailwind-config.js"></script>
+    <title>Hermes — Control Room</title>
+    <meta name="description" content="Hermes AI Batch Processing Scheduler — Control Room">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="/static/css/style.css">
 </head>
-<body class="bg-gray-900 text-white font-sans h-screen flex flex-col overflow-hidden">
+<body>
 
-    <!-- HEADER -->
-    <header class="bg-gray-800 border-b border-gray-700 p-4 flex justify-between items-center shadow-lg z-10">
-        <div class="flex items-center gap-3">
-            <h1 class="text-2xl font-black text-blue-400 tracking-wider">⚡ HERMES</h1>
-            <span class="bg-gray-700 text-xs px-2 py-1 rounded text-gray-300">v2.0 Multi-Pool</span>
+    <!-- SIDEBAR -->
+    <aside id="sidebar">
+        <div class="sidebar-brand">
+            <div class="brand-icon">⚡</div>
+            <div class="brand-text">
+                <span class="brand-name">HERMES</span>
+                <span class="brand-version">v2.0 Multi-Pool</span>
+            </div>
         </div>
-        <div class="flex items-center gap-4">
-            <span class="text-sm text-gray-400">Stato Motore:</span>
-            <span id="status-badge" class="px-3 py-1 rounded text-sm font-bold bg-red-500/20 text-red-400 border border-red-500/30">OFFLINE 🔴</span>
+
+        <div class="sidebar-status">
+            <span class="status-dot" id="status-dot"></span>
+            <span class="status-label" id="status-label">OFFLINE</span>
         </div>
-    </header>
 
-    <!-- BODY: Sidebar + Main -->
-    <div class="flex flex-1 overflow-hidden">
+        <nav class="sidebar-nav">
+            <a href="#" class="nav-item active" data-page="dashboard" onclick="navigate('dashboard', this)">
+                <span class="nav-icon">▣</span>
+                <span>Dashboard</span>
+            </a>
+            <a href="#" class="nav-item" data-page="pools" onclick="navigate('pools', this)">
+                <span class="nav-icon">◈</span>
+                <span>Thread Pools</span>
+            </a>
+            <a href="#" class="nav-item" data-page="routing" onclick="navigate('routing', this)">
+                <span class="nav-icon">◎</span>
+                <span>Routing Modelli</span>
+            </a>
+            <a href="#" class="nav-item" data-page="logs" onclick="navigate('logs', this)">
+                <span class="nav-icon">≡</span>
+                <span>Log di Sistema</span>
+            </a>
+        </nav>
 
-        <!-- SIDEBAR -->
-        <aside class="w-80 bg-gray-800 p-6 flex flex-col border-r border-gray-700 overflow-y-auto">
-
-            <!-- Sezione: Configurazione Avvio -->
-            <h3 class="text-lg font-bold text-gray-200 mb-4 border-b border-gray-700 pb-2">Configurazione Avvio</h3>
-            <div class="space-y-4 mb-6">
-                <div>
-                    <label class="block text-sm text-gray-400 mb-1">Max Workers (Pool Default)</label>
-                    <input type="number" id="workers" value="4"
-                        class="w-full bg-gray-900 border border-gray-700 rounded p-2 text-white focus:border-blue-500 outline-none transition">
-                </div>
-                <div>
-                    <label class="block text-sm text-gray-400 mb-1">Poll Interval (sec)</label>
-                    <input type="number" id="interval" value="15"
-                        class="w-full bg-gray-900 border border-gray-700 rounded p-2 text-white focus:border-blue-500 outline-none transition">
-                </div>
-                <button onclick="startHermes()" id="btn-start"
-                    class="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-3 rounded shadow-lg shadow-blue-500/30 transition transform hover:-translate-y-0.5">
+        <div class="sidebar-footer">
+            <div class="engine-controls">
+                <button id="btn-start" class="btn btn-start" onclick="startHermes()">
                     ▶ Avvia Motore
                 </button>
-                <button onclick="stopHermes()" id="btn-stop" disabled
-                    class="w-full bg-gray-700 text-gray-500 font-bold py-3 rounded cursor-not-allowed transition">
-                    ■ Arresta Sistema
+                <button id="btn-stop" class="btn btn-stop" onclick="stopHermes()" disabled>
+                    ■ Arresta
                 </button>
             </div>
-
-            <!-- Sezione: Aggiungi Pool -->
-            <h3 class="text-lg font-bold text-gray-200 mb-4 mt-2 border-b border-gray-700 pb-2">Gestione Multi-Pool</h3>
-            <div class="space-y-3 bg-gray-900/50 p-4 rounded border border-gray-700 mb-4">
-                <input type="text" id="new-pool-name" placeholder="Nome pool (es. pool_llama)"
-                    class="w-full bg-gray-800 border border-gray-600 rounded p-2 text-sm text-white outline-none focus:border-emerald-500 transition">
-                <input type="number" id="new-pool-workers" placeholder="Num. Workers (es. 2)"
-                    class="w-full bg-gray-800 border border-gray-600 rounded p-2 text-sm text-white outline-none focus:border-emerald-500 transition">
-                <button onclick="addPool()" id="btn-add-pool" disabled
-                    class="w-full bg-gray-700 text-gray-500 text-sm font-bold py-2 rounded opacity-50 cursor-not-allowed">
-                    + Aggiungi Pool
-                </button>
+            <div class="start-config">
+                <div class="config-field">
+                    <label>Workers (Default Pool)</label>
+                    <input type="number" id="workers" value="4" min="1">
+                </div>
+                <div class="config-field">
+                    <label>Poll Interval (sec)</label>
+                    <input type="number" id="interval" value="15" min="1">
+                </div>
             </div>
+        </div>
+    </aside>
 
-        </aside>
+    <!-- MAIN CONTENT -->
+    <div class="main-wrapper">
 
-        <!-- MAIN -->
-        <main class="flex-1 flex flex-col p-6 bg-gray-900 overflow-y-auto gap-6">
+        <!-- TOP BAR -->
+        <header class="topbar">
+            <div class="topbar-title" id="topbar-title">Dashboard</div>
+            <div class="topbar-right">
+                <span class="topbar-time" id="topbar-time"></span>
+                <div class="status-pill" id="status-pill">
+                    <span class="pill-dot offline"></span>
+                    <span id="pill-text">OFFLINE</span>
+                </div>
+            </div>
+        </header>
 
-            <!-- Griglia Pool -->
-            <div>
-                <h2 class="text-xl font-bold mb-4 text-gray-200">Thread Pools Attivi</h2>
-                <div id="pools-container" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                    <div class="bg-gray-800 p-4 rounded-lg border border-gray-700 flex items-center justify-center text-gray-500 col-span-full">
-                        Avvia Hermes per visualizzare i Pool...
+        <!-- PAGES -->
+        <div class="page-container">
+
+            <!-- PAGE: DASHBOARD -->
+            <section id="page-dashboard" class="page active">
+                <div class="kpi-grid" id="kpi-grid">
+                    <div class="kpi-card">
+                        <div class="kpi-icon" style="--c:#6366f1">▣</div>
+                        <div class="kpi-value" id="kpi-pools">0</div>
+                        <div class="kpi-label">Pool Attivi</div>
+                    </div>
+                    <div class="kpi-card">
+                        <div class="kpi-icon" style="--c:#10b981">◈</div>
+                        <div class="kpi-value" id="kpi-workers">0</div>
+                        <div class="kpi-label">Workers Totali</div>
+                    </div>
+                    <div class="kpi-card">
+                        <div class="kpi-icon" style="--c:#f59e0b">▷</div>
+                        <div class="kpi-value" id="kpi-queue">0</div>
+                        <div class="kpi-label">Task in Coda</div>
+                    </div>
+                    <div class="kpi-card">
+                        <div class="kpi-icon" style="--c:#ec4899">★</div>
+                        <div class="kpi-value" id="kpi-active">0</div>
+                        <div class="kpi-label">Task Attivi</div>
                     </div>
                 </div>
-            </div>
 
-            <!-- Terminale Log -->
-            <div class="flex flex-col flex-1 min-h-0">
-                <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
-                    <h2 class="text-xl font-bold text-gray-200">Log di Sistema</h2>
-                    <!-- Toolbar download -->
-                    <div class="flex flex-wrap items-center gap-2 bg-gray-800 border border-gray-700 rounded-lg px-3 py-2">
-                        <span class="text-xs text-gray-400 whitespace-nowrap">Esporta:</span>
-                        <div class="flex items-center gap-1">
-                            <label class="text-xs text-gray-500">Da</label>
-                            <input type="datetime-local" id="log-start"
-                                class="bg-gray-900 border border-gray-700 rounded px-2 py-1 text-xs text-gray-300 outline-none focus:border-blue-500 transition">
-                        </div>
-                        <div class="flex items-center gap-1">
-                            <label class="text-xs text-gray-500">A</label>
-                            <input type="datetime-local" id="log-end"
-                                class="bg-gray-900 border border-gray-700 rounded px-2 py-1 text-xs text-gray-300 outline-none focus:border-blue-500 transition">
-                        </div>
-                        <button onclick="downloadLogs()"
-                            class="bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold px-3 py-1 rounded transition flex items-center gap-1">
-                            ⬇ Scarica .txt
-                        </button>
-                        <button onclick="clearTerminal()"
-                            class="bg-gray-700 hover:bg-gray-600 text-gray-300 text-xs px-3 py-1 rounded transition">
-                            🗑 Pulisci
-                        </button>
+                <h2 class="section-title">Panoramica Pool</h2>
+                <div id="pools-overview" class="pools-grid">
+                    <div class="empty-state">
+                        <div class="empty-icon">⚡</div>
+                        <p>Avvia Hermes per visualizzare i pool</p>
                     </div>
                 </div>
-                <div id="terminal-container" class="flex-1 bg-black rounded-lg border border-gray-700 p-4 font-mono text-sm overflow-y-auto shadow-inner min-h-0">
-                    <div id="terminal-output" class="text-green-400 whitespace-pre-wrap pb-8"></div>
-                </div>
-            </div>
+            </section>
 
-        </main>
+            <!-- PAGE: THREAD POOLS -->
+            <section id="page-pools" class="page">
+                <div class="page-header">
+                    <h2 class="section-title" style="margin:0">Gestione Thread Pool</h2>
+                    <button id="btn-add-pool" class="btn btn-add" onclick="openAddPoolModal()" disabled>
+                        + Nuovo Pool
+                    </button>
+                </div>
+
+                <div id="pools-manage-container" class="pools-grid">
+                    <div class="empty-state">
+                        <div class="empty-icon">◈</div>
+                        <p>Avvia Hermes per gestire i pool</p>
+                    </div>
+                </div>
+            </section>
+
+            <!-- PAGE: ROUTING MODELLI -->
+            <section id="page-routing" class="page">
+                <div class="page-header">
+                    <h2 class="section-title" style="margin:0">Routing Modelli → Pool</h2>
+                </div>
+                <div class="routing-layout">
+                    <div class="card">
+                        <h3 class="card-title">Nuova Regola di Routing</h3>
+                        <div class="form-group">
+                            <label>Nome Modello</label>
+                            <input type="text" id="route-model" placeholder="es. llama3, gpt-4o, mistral...">
+                        </div>
+                        <div class="form-group">
+                            <label>Pool di Destinazione</label>
+                            <select id="route-pool">
+                                <option value="" disabled selected>Seleziona un pool...</option>
+                            </select>
+                        </div>
+                        <button class="btn btn-primary w-full" onclick="saveRoute()">
+                            ↳ Salva Regola
+                        </button>
+                    </div>
+                    <div class="card">
+                        <h3 class="card-title">Regole Attive</h3>
+                        <div id="routes-list" class="routes-list">
+                            <div class="empty-state-sm">Nessuna regola configurata.</div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- PAGE: LOGS -->
+            <section id="page-logs" class="page">
+                <div class="page-header">
+                    <h2 class="section-title" style="margin:0">Log di Sistema</h2>
+                    <div class="log-toolbar">
+                        <div class="log-filter-group">
+                            <label class="filter-label">Da</label>
+                            <input type="datetime-local" id="log-start" class="input-sm">
+                        </div>
+                        <div class="log-filter-group">
+                            <label class="filter-label">A</label>
+                            <input type="datetime-local" id="log-end" class="input-sm">
+                        </div>
+                        <button class="btn btn-sm btn-primary" onclick="downloadLogs()">⬇ Scarica</button>
+                        <button class="btn btn-sm btn-ghost" onclick="clearTerminal()">🗑 Pulisci</button>
+                    </div>
+                </div>
+                <div id="terminal-container" class="terminal">
+                    <div id="terminal-output"></div>
+                </div>
+            </section>
+
+        </div>
     </div>
+
+    <!-- MODAL: Add/Edit Pool -->
+    <div id="modal-overlay" class="modal-overlay" onclick="closeModal()">
+        <div class="modal" onclick="event.stopPropagation()">
+            <div class="modal-header">
+                <h3 id="modal-title">Nuovo Pool</h3>
+                <button class="modal-close" onclick="closeModal()">✕</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label>Nome Pool</label>
+                    <input type="text" id="modal-pool-name" placeholder="es. pool_llama">
+                </div>
+                <div class="form-group">
+                    <label>Numero Workers</label>
+                    <input type="number" id="modal-pool-workers" placeholder="es. 2" min="1">
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-ghost" onclick="closeModal()">Annulla</button>
+                <button class="btn btn-primary" id="modal-confirm-btn" onclick="confirmModal()">Crea Pool</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- TOAST -->
+    <div id="toast" class="toast"></div>
 
     <script src="/static/js/app.js" defer></script>
 </body>

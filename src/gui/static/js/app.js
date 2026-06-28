@@ -1,158 +1,356 @@
+/* ===========================================
+   HERMES — app.js
+   Nessuna modifica alla logica dei Thread Pool.
+   Solo UI: navigazione, rendering, modal, toast.
+   =========================================== */
+
+// ── WebSocket logs ──────────────────────────────────────────────────
 const wsProto = window.location.protocol === 'https:' ? 'wss' : 'ws';
 const ws = new WebSocket(`${wsProto}://${window.location.host}/ws/logs`);
 const terminal = document.getElementById('terminal-output');
-const terminalContainer = document.getElementById('terminal-container');
 const MAX_TERMINAL_LINES = 2000;
 
 ws.onmessage = function(event) {
-    terminal.textContent += event.data + "\n";
-    const lines = terminal.textContent.split("\n");
+    const timestamp = new Date().toLocaleTimeString('it-IT');
+    terminal.textContent += `[${timestamp}] ${event.data}\n`;
+    const lines = terminal.textContent.split('\n');
     if (lines.length > MAX_TERMINAL_LINES) {
-        terminal.textContent = lines.slice(-MAX_TERMINAL_LINES).join("\n");
+        terminal.textContent = lines.slice(-MAX_TERMINAL_LINES).join('\n');
     }
-    terminalContainer.scrollTop = terminalContainer.scrollHeight;
+    const tc = document.getElementById('terminal-container');
+    tc.scrollTop = tc.scrollHeight;
 };
 
-async function updateStatus() {
-    try {
-        const res = await fetch('/api/status');
-        const data = await res.json();
-        
-        const badge = document.getElementById('status-badge');
-        const btnStart = document.getElementById('btn-start');
-        const btnStop = document.getElementById('btn-stop');
-        const btnAddPool = document.getElementById('btn-add-pool');
+// ── Routing: sincronizzato col backend ──────────────────────────────
+// NON usiamo più un oggetto locale: le route vengono sempre lette dal server.
 
-        if (data.is_running) {
-            badge.textContent = "ONLINE 🟢";
-            badge.className = "px-3 py-1 rounded text-sm font-bold bg-green-500/20 text-green-400 border border-green-500/30 shadow-[0_0_10px_rgba(34,197,94,0.2)]";
-            btnStart.disabled = true; btnStart.className = "w-full bg-gray-700 text-gray-500 font-bold py-3 rounded cursor-not-allowed";
-            btnStop.disabled = false; btnStop.className = "w-full bg-red-600 hover:bg-red-500 text-white font-bold py-3 rounded shadow-lg shadow-red-500/30 transition";
-            btnAddPool.disabled = false; btnAddPool.className = "w-full bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-bold py-2 rounded transition shadow-lg shadow-emerald-500/20";
-        } else {
-            badge.textContent = "OFFLINE 🔴";
-            badge.className = "px-3 py-1 rounded text-sm font-bold bg-red-500/20 text-red-400 border border-red-500/30 shadow-[0_0_10px_rgba(239,68,68,0.2)]";
-            btnStart.disabled = false; btnStart.className = "w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-3 rounded shadow-lg shadow-blue-500/30 transition";
-            btnStop.disabled = true; btnStop.className = "w-full bg-gray-700 text-gray-500 font-bold py-3 rounded cursor-not-allowed";
-            btnAddPool.disabled = true; btnAddPool.className = "w-full bg-gray-700 text-gray-500 text-sm font-bold py-2 rounded opacity-50 cursor-not-allowed";
-        }
+// ── Navigazione multi-pagina ─────────────────────────────────────────
+const PAGE_TITLES = {
+    dashboard: 'Dashboard',
+    pools:     'Thread Pools',
+    routing:   'Routing Modelli',
+    logs:      'Log di Sistema',
+};
 
-        const poolsContainer = document.getElementById('pools-container');
-        if (data.is_running && Object.keys(data.pools).length > 0) {
-            poolsContainer.innerHTML = '';
-            for (const [name, stats] of Object.entries(data.pools)) {
-                const isWorking = stats.in_coda > 0;
-                const borderColor = isWorking ? 'border-blue-500' : 'border-gray-600';
-                const dotColor = isWorking ? 'bg-blue-500 animate-pulse' : 'bg-gray-500';
-                
-                // NOTA: Aggiunta la classe 'group' e i bottoni di Edit/Delete
-                const safeLabel = String(name).replace(/[&<>"'`]/g, '');
-                poolsContainer.innerHTML += `
-                    <div class="pool-card bg-gray-800 p-5 rounded-lg border ${borderColor} shadow-md transition-all relative">
-                        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
-                            <h4 style="font-weight:bold; color:#f3f4f6; display:flex; align-items:center; gap:8px;">
-                                <span style="width:12px; height:12px; border-radius:50%; display:inline-block;" class="${dotColor}"></span>
-                                ${safeLabel.toUpperCase()}
-                            </h4>
-                            <div style="display:flex; align-items:center; gap:12px;">
-                                <span style="background:#111827; font-size:12px; padding:4px 8px; border-radius:4px; color:#9ca3af; border:1px solid #374151;">
-                                    Max Workers: ${stats.max_workers}
-                                </span>
-                                <div class="pool-actions" style="display:flex; gap:8px;">
-                                    <button onclick='editPool(${JSON.stringify(name)}, ${stats.max_workers})'
-                                        style="color:#60a5fa; background:none; border:none; cursor:pointer; font-size:16px; padding:2px 6px; border-radius:4px;"
-                                        title="Modifica Pool">✏️</button>
-                                    <button onclick='deletePool(${JSON.stringify(name)})'
-                                        style="color:#f87171; background:none; border:none; cursor:pointer; font-size:16px; padding:2px 6px; border-radius:4px;"
-                                        title="Elimina Pool">🗑️</button>
-                                </div>
-                            </div>
-                        </div>
-                        <div style="display:flex; justify-content:space-between; align-items:flex-end;">
-                            <div>
-                                <p style="font-size:11px; color:#6b7280; text-transform:uppercase; letter-spacing:0.05em;">Task in Coda</p>
-                                <p style="font-size:28px; font-weight:300; color:white;">${stats.in_coda}</p>
-                            </div>
-                            <div style="text-align:right; font-size:14px; color:${isWorking ? '#60a5fa' : '#6b7280'};">
-                                ${stats.attivi}
-                            </div>
-                        </div>
-                    </div>
-                `;
-            }
-        } else if (!data.is_running) {
-            poolsContainer.innerHTML = '<div class="bg-gray-800 p-4 rounded-lg border border-gray-700 flex items-center justify-center text-gray-500">Avvia Hermes per visualizzare i Pool...</div>';
-        }
-    } catch (e) { console.error(e); }
+function navigate(pageId, el) {
+    // Nasconde tutte le pagine
+    document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+    document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+
+    // Mostra la pagina target
+    document.getElementById(`page-${pageId}`).classList.add('active');
+    if (el) el.classList.add('active');
+
+    // Aggiorna titolo topbar
+    document.getElementById('topbar-title').textContent = PAGE_TITLES[pageId] || pageId;
+
+    // Aggiorna la select dei pool nella pagina routing
+    if (pageId === 'routing') {
+        refreshRoutePoolSelect();
+        loadRoutes();
+    }
+
+    return false;
 }
 
+// ── Clock ─────────────────────────────────────────────────────────────
+function updateClock() {
+    const el = document.getElementById('topbar-time');
+    if (el) el.textContent = new Date().toLocaleTimeString('it-IT');
+}
+setInterval(updateClock, 1000);
+updateClock();
+
+// ── Status polling ────────────────────────────────────────────────────
+async function updateStatus() {
+    try {
+        const res  = await fetch('/api/status');
+        const data = await res.json();
+
+        const isRunning = data.is_running;
+
+        // Status indicators
+        const dot   = document.getElementById('status-dot');
+        const label = document.getElementById('status-label');
+        const pill  = document.getElementById('status-pill');
+        const pillDot  = pill.querySelector('.pill-dot');
+        const pillText = document.getElementById('pill-text');
+
+        if (isRunning) {
+            dot.classList.add('online');
+            label.textContent = 'ONLINE';
+            pill.classList.add('online');
+            pillDot.classList.add('online');
+            pillText.textContent = 'ONLINE';
+        } else {
+            dot.classList.remove('online');
+            label.textContent = 'OFFLINE';
+            pill.classList.remove('online');
+            pillDot.classList.remove('online');
+            pillText.textContent = 'OFFLINE';
+        }
+
+        // Bottoni avvio/arresto
+        const btnStart   = document.getElementById('btn-start');
+        const btnStop    = document.getElementById('btn-stop');
+        const btnAddPool = document.getElementById('btn-add-pool');
+
+        btnStart.disabled   = isRunning;
+        btnStop.disabled    = !isRunning;
+        btnAddPool.disabled = !isRunning;
+
+        // Rendering pool nelle due pagine (Dashboard e Pool Manager)
+        renderPools(data.pools, isRunning);
+
+    } catch (e) { console.error('Status error:', e); }
+}
+
+// ── Rendering Pool ────────────────────────────────────────────────────
+function renderPools(pools, isRunning) {
+    const overview = document.getElementById('pools-overview');
+    const manage   = document.getElementById('pools-manage-container');
+
+    const emptyHTML = (icon, msg) => `
+        <div class="empty-state">
+            <div class="empty-icon">${icon}</div>
+            <p>${msg}</p>
+        </div>`;
+
+    if (!isRunning || !pools || Object.keys(pools).length === 0) {
+        const msg = isRunning
+            ? emptyHTML('◈', 'Nessun pool attivo — aggiungine uno!')
+            : emptyHTML('⚡', 'Avvia Hermes per visualizzare i pool');
+        overview.innerHTML = msg;
+        manage.innerHTML   = msg;
+
+        // KPI a zero
+        document.getElementById('kpi-pools').textContent   = '0';
+        document.getElementById('kpi-workers').textContent = '0';
+        document.getElementById('kpi-queue').textContent   = '0';
+        document.getElementById('kpi-active').textContent  = '0';
+        return;
+    }
+
+    const entries = Object.entries(pools);
+    let totalWorkers = 0, totalQueue = 0, totalActive = 0;
+
+    let html = '';
+    for (const [name, stats] of entries) {
+        totalWorkers += (stats.max_workers || 0);
+        totalQueue   += (stats.in_coda    || 0);
+        totalActive  += (stats.attivi     || 0);
+
+        const working   = (stats.in_coda || 0) > 0;
+        const safeName  = String(name).replace(/[&<>"'`]/g, '');
+        const dotClass  = working ? 'active' : '';
+        const cardClass = working ? 'working' : '';
+
+        html += `
+        <div class="pool-card ${cardClass}">
+            <div class="pool-card-header">
+                <div class="pool-card-name">
+                    <span class="pool-dot ${dotClass}"></span>
+                    ${safeName.toUpperCase()}
+                </div>
+                <div style="display:flex;align-items:center;gap:8px;">
+                    <span class="pool-badge">${stats.max_workers} workers</span>
+                    <div class="pool-actions">
+                        <button class="pool-action-btn" onclick='editPool(${JSON.stringify(name)}, ${stats.max_workers})' title="Modifica">✏️</button>
+                        <button class="pool-action-btn" onclick='deletePool(${JSON.stringify(name)})' title="Elimina">🗑️</button>
+                    </div>
+                </div>
+            </div>
+            <div class="pool-card-stats">
+                <div class="pool-stat">
+                    <div class="pool-stat-label">In Coda</div>
+                    <div class="pool-stat-value">${stats.in_coda ?? 0}</div>
+                </div>
+                <div class="pool-stat">
+                    <div class="pool-stat-label">Attivi</div>
+                    <div class="pool-stat-value">${stats.attivi ?? 0}</div>
+                </div>
+            </div>
+        </div>`;
+    }
+
+    overview.innerHTML = html;
+    manage.innerHTML   = html;
+
+    // KPI
+    document.getElementById('kpi-pools').textContent   = entries.length;
+    document.getElementById('kpi-workers').textContent = totalWorkers;
+    document.getElementById('kpi-queue').textContent   = totalQueue;
+    document.getElementById('kpi-active').textContent  = totalActive;
+}
+
+// ── Start / Stop ───────────────────────────────────────────────────────
 async function startHermes() {
-    const workers = document.getElementById('workers').value;
-    const interval = document.getElementById('interval').value;
-    await fetch('/api/start', {
+    const workers  = parseInt(document.getElementById('workers').value)  || 4;
+    const interval = parseInt(document.getElementById('interval').value) || 15;
+    const res = await fetch('/api/start', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ workers: parseInt(workers), interval: parseInt(interval) })
+        body: JSON.stringify({ workers, interval })
     });
+    const data = await res.json();
+    showToast(data.status === 'started' ? 'Hermes avviato ✓' : 'Già in esecuzione', 'success');
     updateStatus();
 }
 
 async function stopHermes() {
     await fetch('/api/stop', { method: 'POST' });
+    showToast('Hermes arrestato', 'info');
     updateStatus();
 }
 
-async function addPool() {
-    const name = document.getElementById('new-pool-name').value;
-    const workers = document.getElementById('new-pool-workers').value;
-    if(!name || !workers) return;
+// ── Add Pool (tramite modal) ───────────────────────────────────────────
+let modalMode = 'add';
+let modalOldName = null;
 
-    await fetch('/api/pools', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: name, workers: parseInt(workers) })
-    });
-    document.getElementById('new-pool-name').value = '';
-    document.getElementById('new-pool-workers').value = '';
+function openAddPoolModal() {
+    modalMode    = 'add';
+    modalOldName = null;
+    document.getElementById('modal-title').textContent         = 'Nuovo Pool';
+    document.getElementById('modal-confirm-btn').textContent   = 'Crea Pool';
+    document.getElementById('modal-pool-name').value          = '';
+    document.getElementById('modal-pool-workers').value       = '';
+    document.getElementById('modal-pool-name').disabled       = false;
+    openModal();
+}
+
+function openModal()  { document.getElementById('modal-overlay').classList.add('open'); }
+function closeModal() { document.getElementById('modal-overlay').classList.remove('open'); }
+
+async function confirmModal() {
+    const name    = document.getElementById('modal-pool-name').value.trim();
+    const workers = parseInt(document.getElementById('modal-pool-workers').value);
+
+    if (!name)          return showToast('Inserisci un nome per il pool', 'error');
+    if (!workers || workers < 1) return showToast('Inserisci un numero valido di workers', 'error');
+
+    if (modalMode === 'add') {
+        const res = await fetch('/api/pools', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name, workers })
+        });
+        const data = await res.json();
+        showToast(data.success ? `Pool "${name}" creato ✓` : `Errore: ${data.error}`, data.success ? 'success' : 'error');
+    } else {
+        const res = await fetch(`/api/pools/${encodeURIComponent(modalOldName)}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ new_name: name, workers })
+        });
+        const data = await res.json();
+        showToast(data.success ? `Pool aggiornato ✓` : `Errore: ${data.message}`, data.success ? 'success' : 'error');
+    }
+
+    closeModal();
     updateStatus();
 }
 
-// --- NUOVE FUNZIONI DI MODIFICA / ELIMINAZIONE ---
-
-async function editPool(oldName, currentWorkers) {
-    const newName = prompt(`Rinomina il pool '${oldName}':`, oldName);
-    if (!newName) return;
-    
-    const newWorkers = prompt(`Imposta i nuovi workers per '${newName}':`, currentWorkers);
-    if (!newWorkers || isNaN(newWorkers)) return;
-
-    const res = await fetch('/api/pools/' + oldName, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ new_name: newName, workers: parseInt(newWorkers) })
-    });
-    const result = await res.json();
-    if(!result.success) alert("Errore: " + result.message);
-    
-    updateStatus();
+// ── Edit / Delete Pool ─────────────────────────────────────────────────
+function editPool(oldName, currentWorkers) {
+    modalMode    = 'edit';
+    modalOldName = oldName;
+    document.getElementById('modal-title').textContent         = `Modifica "${oldName}"`;
+    document.getElementById('modal-confirm-btn').textContent   = 'Salva Modifiche';
+    document.getElementById('modal-pool-name').value          = oldName;
+    document.getElementById('modal-pool-workers').value       = currentWorkers;
+    document.getElementById('modal-pool-name').disabled       = false;
+    openModal();
 }
 
 async function deletePool(name) {
-    if(!confirm(`Sei sicuro di voler eliminare il pool '${name}'? \nTutti i task attualmente in coda verranno annullati!`)) return;
-    
-    const res = await fetch('/api/pools/' + name, { method: 'DELETE' });
+    if (!confirm(`Eliminare il pool "${name}"?\nI task in coda verranno annullati.`)) return;
+    const res    = await fetch(`/api/pools/${encodeURIComponent(name)}`, { method: 'DELETE' });
     const result = await res.json();
-    if(!result.success) alert("Errore: " + result.message);
-    
+    showToast(result.success ? `Pool "${name}" eliminato` : `Errore: ${result.message}`, result.success ? 'info' : 'error');
     updateStatus();
 }
 
+// ── Routing ────────────────────────────────────────────────────────────
+function refreshRoutePoolSelect() {
+    const sel = document.getElementById('route-pool');
+    // Leggiamo i pool dal DOM già renderizzato (senza refetch)
+    const cards = document.querySelectorAll('#pools-manage-container .pool-card .pool-card-name');
+    sel.innerHTML = '<option value="" disabled selected>Seleziona un pool...</option>';
+    cards.forEach(card => {
+        const name = card.textContent.trim().toLowerCase();
+        const opt  = document.createElement('option');
+        opt.value  = name;
+        opt.textContent = name;
+        sel.appendChild(opt);
+    });
+}
+
+async function saveRoute() {
+    const modelName = document.getElementById('route-model').value.trim();
+    const poolName  = document.getElementById('route-pool').value;
+    if (!modelName) return showToast('Inserisci il nome del modello', 'error');
+    if (!poolName)  return showToast('Seleziona un pool di destinazione', 'error');
+
+    const res  = await fetch('/api/routes', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ model_name: modelName, pool_name: poolName })
+    });
+    const data = await res.json();
+
+    if (data.success) {
+        document.getElementById('route-model').value = '';
+        document.getElementById('route-pool').value  = '';
+        await loadRoutes();
+        showToast(`Routing: ${modelName} → ${poolName} ✓`, 'success');
+    } else {
+        showToast(`Errore: ${data.error}`, 'error');
+    }
+}
+
+async function deleteRoute(modelName) {
+    const res    = await fetch(`/api/routes/${encodeURIComponent(modelName)}`, { method: 'DELETE' });
+    const result = await res.json();
+    if (result.success) {
+        showToast(`Regola "${modelName}" rimossa`, 'info');
+        await loadRoutes();
+    } else {
+        showToast(`Errore: ${result.error}`, 'error');
+    }
+}
+
+async function loadRoutes() {
+    try {
+        const res  = await fetch('/api/routes');
+        const data = await res.json();
+        renderRoutes(data.routes || {});
+    } catch (e) {
+        renderRoutes({});
+    }
+}
+
+function renderRoutes(routes) {
+    const list    = document.getElementById('routes-list');
+    const entries = Object.entries(routes);
+    if (entries.length === 0) {
+        list.innerHTML = '<div class="empty-state-sm">Nessuna regola configurata.</div>';
+        return;
+    }
+    list.innerHTML = entries.map(([model, pool]) => `
+        <div class="route-item">
+            <span class="route-model">${model}</span>
+            <span class="route-arrow">→</span>
+            <span class="route-pool">${pool}</span>
+            <button class="route-delete-btn" onclick="deleteRoute(${JSON.stringify(model)})" title="Rimuovi regola">✕</button>
+        </div>
+    `).join('');
+}
+
+// ── Log export ─────────────────────────────────────────────────────────
 function downloadLogs() {
     const startEl = document.getElementById('log-start').value;
     const endEl   = document.getElementById('log-end').value;
-
-    // Converti datetime-local (YYYY-MM-DDTHH:MM) in ISO seconds
-    const toISO = v => v ? v + ':00' : null;
+    const toISO   = v => v ? v + ':00' : null;
 
     let url = '/api/logs/download';
     const params = new URLSearchParams();
@@ -160,19 +358,27 @@ function downloadLogs() {
     if (toISO(endEl))   params.set('end',   toISO(endEl));
     if ([...params].length) url += '?' + params.toString();
 
-    // Apre il file come download senza lasciare la pagina
     const a = document.createElement('a');
-    a.href = url;
-    a.download = '';
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
+    a.href = url; a.download = ''; document.body.appendChild(a);
+    a.click(); document.body.removeChild(a);
+    showToast('Download avviato', 'info');
 }
 
 function clearTerminal() {
     document.getElementById('terminal-output').textContent = '';
+    showToast('Terminale pulito', 'info');
 }
 
-// Polling ogni secondo
-setInterval(updateStatus, 1000);
+// ── Toast ──────────────────────────────────────────────────────────────
+let toastTimer = null;
+function showToast(msg, type = 'info') {
+    const el = document.getElementById('toast');
+    el.textContent = msg;
+    el.className   = `toast ${type} show`;
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => el.classList.remove('show'), 3000);
+}
+
+// ── Boot ───────────────────────────────────────────────────────────────
+setInterval(updateStatus, 1500);
 updateStatus();

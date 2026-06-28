@@ -26,6 +26,10 @@ class UpdatePoolParams(BaseModel):
     new_name: str = Field(..., min_length=1, max_length=64)
     workers: int = Field(..., ge=1)
 
+class RouteParams(BaseModel):
+    model_name: str
+    pool_name: str
+
 @router.get("/status")
 async def get_status():
     is_running = state.SCHEDULER_THREAD is not None and state.SCHEDULER_THREAD.is_alive()
@@ -42,6 +46,26 @@ async def get_status():
 async def create_pool(params: PoolParams):
     if hermes_main.dispatcher:
         success = hermes_main.dispatcher.add_pool(params.name, params.workers)
+        return {"success": success}
+    return {"success": False, "error": "Hermes offline"}
+
+@router.post("/routes")
+async def set_routing_rule(params: RouteParams):
+    if hermes_main.dispatcher:
+        success = hermes_main.dispatcher.set_route(params.model_name, params.pool_name)
+        return {"success": success}
+    return {"success": False, "error": "Hermes offline"}
+
+@router.get("/routes")
+async def get_routes():
+    if hermes_main.dispatcher:
+        return {"routes": hermes_main.dispatcher.get_routes()}
+    return {"routes": {}}
+
+@router.delete("/routes/{model_name}")
+async def delete_routing_rule(model_name: str):
+    if hermes_main.dispatcher:
+        success = hermes_main.dispatcher.delete_route(model_name)
         return {"success": success}
     return {"success": False, "error": "Hermes offline"}
 
