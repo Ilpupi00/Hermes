@@ -20,6 +20,8 @@ class Dispatcher:
         }
         self.worker = get_worker_instance()
         config.logger.info(f"status=dispatcher_ready pools=1 worker_class={config.WORKER_CLASS}")
+        self.routing_table = {} 
+        self.worker = get_worker_instance()
 
     def add_pool(self, pool_name: str, max_workers: int):
         if max_workers < 1:
@@ -101,6 +103,35 @@ class Dispatcher:
                     "attivi": "Si" if coda_attesa > 0 else "In attesa"
                 }
         return stats
+
+    def set_route(self, model_name: str, pool_name: str):
+        """API per la GUI: Associa un modello a un ThreadPool specifico."""
+        with self.lock:
+            # Se il pool non esiste, fallback al default
+            if pool_name not in self.pools:
+                pool_name = "default"
+            self.routing_table[model_name] = pool_name
+            config.logger.info(f"status=route_updated model={model_name} target_pool={pool_name}")
+            return True
+
+    def delete_route(self, model_name: str):
+        """API per la GUI: Rimuove la regola di routing per un dato modello."""
+        with self.lock:
+            if model_name in self.routing_table:
+                del self.routing_table[model_name]
+                config.logger.info(f"status=route_deleted model={model_name}")
+                return True
+            return False
+
+    def get_routes(self):
+        """Restituisce una copia della routing table corrente."""
+        with self.lock:
+            return dict(self.routing_table)
+
+    def get_route(self, model_name: str) -> str:
+        """Restituisce il pool corretto per un dato modello."""
+        with self.lock:
+            return self.routing_table.get(model_name, "default")
 
     def shutdown(self):
         with self.lock:

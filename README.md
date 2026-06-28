@@ -1,6 +1,12 @@
-# ⚡ Hermes
+<p align="center">
+  <img src="docs/images/hermes_logo_v3.png" alt="Hermes Logo" width="600"/>
+</p>
 
-> A lightweight, pluggable async batch processing scheduler for CSV files and Generative AI pipelines.
+<h1 align="center">⚡ Hermes</h1>
+
+<p align="center">
+  <em>A lightweight, pluggable async batch processing scheduler for CSV files and Generative AI pipelines.</em>
+</p>
 
 Hermes is an **independent background process** that watches a shared inbox folder, reads CSV files in memory-safe chunks, and dispatches work to a thread pool of AI workers — completely decoupled from any Web App upstream.
 
@@ -29,7 +35,7 @@ Hermes is an **independent background process** that watches a shared inbox fold
 
 Hermes is **Process 2** in a two-process system. It shares no memory, no imports, and no state with the Web App. The only communication channel between the two is the **shared file system** and the PostgreSQL database.
 
-![Architecture](./async_batch_processing_architecture.svg)
+![Architecture](./docs/images/async_batch_processing_architecture.svg)
 
 ---
 
@@ -37,6 +43,10 @@ Hermes is **Process 2** in a two-process system. It shares no memory, no imports
 
 ```
 Hermes/
+├── docs/
+│   └── images/
+│       ├── hermes_logo_v3.png              # Project logo
+│       └── async_batch_processing_architecture.svg
 ├── pyproject.toml
 ├── requirements.txt
 ├── uv.lock
@@ -64,12 +74,13 @@ Hermes/
     │   ├── app.py              # GUI entry point (FastAPI + PyWebView)
     │   ├── state.py            # Global shared state (processes, ws)
     │   ├── pages/
-    │   │   └── index.html      # UI Dashboard (Tailwind CSS)
+    │   │   └── index.html      # UI Dashboard
     │   ├── static/
-    │   │   ├── css/style.css   # Custom styles (scrollbar, buttons)
+    │   │   ├── css/style.css   # Design system (dark mode)
+    │   │   ├── images/
+    │   │   │   └── hermes_logo_v3.png  # Logo served by FastAPI
     │   │   └── js/
-    │   │       ├── app.js      # Frontend Javascript controller
-    │   │       └── tailwind-config.js # Tailwind configuration
+    │   │       └── app.js      # Frontend Javascript controller
     │   └── routes/
     │       ├── __init__.py     # Router aggregator
     │       ├── control.py      # Engine and thread-pool control routes
@@ -103,6 +114,7 @@ docker compose up -d --build
 ```
 
 This command will automatically:
+
 - Start a `postgres:16-alpine` database and initialize it with `schema_progetto.sql`.
 - Build and start the `hermes_app` container, mounting the local `uploads_web`, `processed`, and `failed` folders so you can easily drop CSV files from your host machine.
 - Expose the Control Room dashboard on port `8000`.
@@ -161,11 +173,13 @@ python -m src.main
 To start the GUI Control Room (FastAPI + PyWebView):
 
 Using `uv` (Recommended):
+
 ```bash
 uv run python -m src.gui.app
 ```
 
 Using python directly:
+
 ```bash
 python -m src.gui.app
 ```
