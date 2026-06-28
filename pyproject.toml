@@ -1,0 +1,17 @@
+[project]
+name = "hermes"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "dotenv>=0.9.9",
+    "huggingface-hub>=1.21.0",
+    "openai>=2.44.0",
+    "pandas>=3.0.3",
+    "psycopg2-binary>=2.9.12",
+    "scheduler>=0.8.11",
+    "sqlalchemy>=2.0.51",
+    "tenacity>=9.1.4",
+    "requests",
+]
