@@ -20,13 +20,14 @@ Hermes is an **independent background process** that watches a shared inbox fold
 - [Extending Hermes — Custom Workers](#extending-hermes--custom-workers)
 - [Processing Loop](#processing-loop)
 - [Logging](#logging)
+- [GUI Control Room & Multi-Pool Management](#gui-control-room--multi-pool-management)
 - [Roadmap](#roadmap)
 
 ---
 
 ## Architecture
 
-Hermes is **Process 2** in a two-process system. It shares no memory, no imports, and no state with the Web App. The only communication channel between the two is the **shared file system**.
+Hermes is **Process 2** in a two-process system. It shares no memory, no imports, and no state with the Web App. The only communication channel between the two is the **shared file system** and the PostgreSQL database.
 
 ![Architecture](./async_batch_processing_architecture.svg)
 
@@ -41,41 +42,44 @@ Hermes/
 ├── uv.lock
 ├── .env
 ├── .python-version
+├── docker-compose.yml          # Docker Compose configuration
+├── Dockerfile                  # Docker image build file
+├── schema_progetto.sql         # PostgreSQL database schema
 └── src/
     ├── __init__.py
     ├── main.py                 # Entry point
     ├── core/
     │   ├── __init__.py
-    │   ├── config.py           # Variabili d'ambiente
-    │   ├── watcher.py          # Polling directory
-    │   ├── mover.py            # Rename atomico
-    │   └── reader.py           # Chunking pandas
+    │   ├── config.py           # Environment variables
+    │   ├── watcher.py          # Directory polling
+    │   ├── mover.py            # Atomic rename
+    │   └── reader.py           # Pandas chunking
     │
     ├── db/
     │   ├── __init__.py
-    │   ├── db.py               # Engine e SessionMaker
-    │   ├── models.py           # Classi ORM SQLAlchemy (Tabelle)
-    │   └── repository.py       # Le query (CRUD)
-    ├── gui/                    # Interfaccia Control Room
-    │   ├── app.py              # Entry point GUI (FastAPI + PyWebView)
-    │   ├── state.py            # Stato globale condiviso (processi, ws)
+    │   ├── db.py               # Engine and SessionMaker
+    │   ├── models.py           # SQLAlchemy ORM classes (Tables)
+    │   └── repository.py       # Queries (CRUD)
+    ├── gui/                    # Control Room interface
+    │   ├── app.py              # GUI entry point (FastAPI + PyWebView)
+    │   ├── state.py            # Global shared state (processes, ws)
     │   ├── pages/
     │   │   └── index.html      # UI Dashboard (Tailwind CSS)
     │   ├── static/
-    │   │   ├── css/style.css   # Stili personalizzati (scrollbar, bottoni)
+    │   │   ├── css/style.css   # Custom styles (scrollbar, buttons)
     │   │   └── js/
-    │   │       ├── app.js      # Controller Javascript frontend
-    │   │       └── tailwind-config.js # Configurazione Tailwind
+    │   │       ├── app.js      # Frontend Javascript controller
+    │   │       └── tailwind-config.js # Tailwind configuration
     │   └── routes/
-    │       ├── __init__.py     # Aggregatore router
-    │       ├── control.py      # Rotte controllo motore e thread-pool
-    │       ├── dashboard.py    # Rotta render dashboard
-    │       └── logs.py         # Streaming log (WS) ed export (.txt)
+    │       ├── __init__.py     # Router aggregator
+    │       ├── control.py      # Engine and thread-pool control routes
+    │       ├── dashboard.py    # Dashboard render route
+    │       └── logs.py         # Log streaming (WS) and export (.txt)
     └── workers/
         ├── __init__.py
-        ├── dispatcher.py       # Gestione ThreadPool
-        ├── worker_base.py      # Classe astratta baseWorker
-        └── ai_worker.py        # La logica del modello con Circuit Breaker
+        ├── dispatcher.py       # ThreadPool management
+        ├── worker_base.py      # Abstract baseWorker class
+        └── ai_worker.py        # Model logic with Circuit Breaker
 ```
 
 ---
@@ -84,10 +88,28 @@ Hermes/
 
 ### Prerequisites
 
-- Python 3.10+
-- pip
+- Docker and Docker Compose (Recommended)
+- Python 3.10+ (If running locally without Docker)
+- pip or uv
 
-### Installation
+### Running with Docker (Recommended)
+
+Hermes now supports full containerization with Docker and Docker Compose. This will spin up the Hermes engine/GUI and a PostgreSQL database automatically.
+
+```bash
+git clone https://github.com/your-org/hermes.git
+cd hermes
+docker compose up -d --build
+```
+
+This command will automatically:
+- Start a `postgres:16-alpine` database and initialize it with `schema_progetto.sql`.
+- Build and start the `hermes_app` container, mounting the local `uploads_web`, `processed`, and `failed` folders so you can easily drop CSV files from your host machine.
+- Expose the Control Room dashboard on port `8000`.
+
+You can access the Control Room dashboard at [http://localhost:8000](http://localhost:8000).
+
+### Local Installation (Without Docker)
 
 Using `uv` (Recommended):
 
@@ -134,9 +156,9 @@ Using python directly:
 python -m src.main
 ```
 
-### Run GUI Control Room
+### Run GUI Control Room Locally
 
-Per avviare la GUI Control Room (FastAPI + PyWebView):
+To start the GUI Control Room (FastAPI + PyWebView):
 
 Using `uv` (Recommended):
 ```bash
@@ -271,16 +293,16 @@ Hermes uses Python's standard `logging` library with a structured format:
 
 ## GUI Control Room & Multi-Pool Management
 
-Hermes offre una dashboard desktop ibrida per monitorare ed orchestrare il sistema visivamente:
+Hermes offers a hybrid desktop dashboard to visually monitor and orchestrate the system:
 
-- **Stato Motore Live**: Avvia e ferma il loop di polling principale.
-- **Gestione Dinamica dei Thread Pool**:
-  - Aggiungi nuovi pool dedicati (es. `test_llm`, `produzione`) specificando il numero dei worker.
-  - Modifica / Rinomina o ridimensiona i worker a caldo (senza riavviare il motore).
-  - Elimina i pool non più necessari (i task in coda verranno annullati).
-  - **Failsafe**: È sempre obbligatorio avere almeno un pool attivo se il motore è online. Se viene richiesto un pool eliminato/inesistente, il sistema devia automaticamente il task sul primo pool disponibile in elenco (fallback).
-- **Terminale Log Integrato**: logs inviati in tempo reale tramite WebSocket con timestamp.
-- **Export dei Log**: Scarica un file `.txt` pulito con intestazione, con la possibilità di filtrare le righe per data ed ora di inizio/fine.
+- **Live Engine Status**: Start and stop the main polling loop.
+- **Dynamic Thread Pool Management**:
+  - Add new dedicated pools (e.g., `test_llm`, `production`) specifying the number of workers.
+  - Hot-swap / Rename or resize workers without restarting the engine.
+  - Delete no longer needed pools (queued tasks will be cancelled).
+  - **Failsafe**: It is always mandatory to have at least one active pool if the engine is online. If a deleted/non-existent pool is requested, the system automatically redirects the task to the first available pool in the list (fallback).
+- **Integrated Log Terminal**: Logs sent in real-time via WebSocket with timestamps.
+- **Log Export**: Download a clean `.txt` file with header, with the ability to filter rows by start/end date and time.
 
 ---
 
@@ -296,7 +318,8 @@ Hermes offre una dashboard desktop ibrida per monitorare ed orchestrare il siste
 - [x] GUI Dashboard (FastAPI + PyWebView)
 - [x] Dynamic `MAX_WORKERS` & Multi-Pool reload without restart
 - [x] Prometheus metrics exporter
-- [ ] Docker + docker-compose setup
+- [x] PostgreSQL Database Integration
+- [x] Docker + docker-compose setup
 
 ---
 
