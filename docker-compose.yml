@@ -1,0 +1,49 @@
+version: '3.8'
+
+services:
+  # --- IL DATABASE POSTGRESQL ---
+  db:
+    image: postgres:16-alpine
+    container_name: hermes_db
+    restart: always
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      # Persistenza dei dati del DB (se spegni il container, i dati restano)
+      - postgres_data:/var/lib/postgresql/data
+      # Inietta il tuo schema SQL all'avvio!
+      - ./schema_progetto.sql:/docker-entrypoint-initdb.d/init.sql
+
+  # --- IL MOTORE HERMES (AI SCHEDULER & DASHBOARD) ---
+  hermes:
+    build: .
+    container_name: hermes_app
+    restart: always
+    depends_on:
+      - db
+    ports:
+      - "8000:8000"
+    environment:
+      # Puntano al container 'db' invece che a 'localhost'
+      - DB_HOST=db
+      - DB_PORT=5432
+      - DB_USER=postgres
+      - DB_PASSWORD=password
+      - DB_NAME=postgres
+      # Configurazione delle cartelle per i CSV
+      - HERMES_INBOX=/app/uploads_web
+      - HERMES_ARCHIVE=/app/processed
+      - HERMES_FAILED=/app/failed
+    volumes:
+      # Sincronizza le cartelle dal tuo PC al container
+      # In questo modo, trascinando un file nel tuo PC, il container lo elabora!
+      - ./uploads_web:/app/uploads_web
+      - ./processed:/app/processed
+      - ./failed:/app/failed
+
+volumes:
+  postgres_data:

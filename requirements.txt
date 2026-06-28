@@ -116,3 +116,4 @@ uvicorn
 websockets 
 pywebview
 prometheus-fastapi-instrumentator
+requests
