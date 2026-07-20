@@ -117,3 +117,6 @@ websockets
 pywebview
 prometheus-fastapi-instrumentator
 requests
+pytest 
+pytest-cov 
+pytest-mock

@@ -27,6 +27,7 @@ Hermes is an **independent background process** that watches a shared inbox fold
 - [Processing Loop](#processing-loop)
 - [Logging](#logging)
 - [GUI Control Room & Multi-Pool Management](#gui-control-room--multi-pool-management)
+- [Testing](#testing)
 - [Roadmap](#roadmap)
 
 ---
@@ -90,7 +91,19 @@ Hermes/
         ├── __init__.py
         ├── dispatcher.py       # ThreadPool management
         ├── worker_base.py      # Abstract baseWorker class
-        └── ai_worker.py        # Model logic with Circuit Breaker
+        └── ai_worker.py
+└── tests/
+    ├── __init__.py
+    ├── conftest.py              <-- File speciale di pytest per le configurazioni e i "fixture" (dati fittizi condivisi)
+    ├── api/
+    │   └── test_health.py       <-- Test per src/api/health.py
+    ├── core/
+    │   ├── test_config.py       <-- Test per src/core/config.py
+    │   └── test_reader.py       <-- Test per src/core/reader.py
+    ├── db/
+    │   └── test_repository.py   <-- Test per src/db/repository.py
+    └── workers/
+        └── test_dispatcher.py   <-- Test per src/workers/dispatcher.py        # Model logic with Circuit Breaker
 ```
 
 ---
@@ -320,6 +333,97 @@ Hermes offers a hybrid desktop dashboard to visually monitor and orchestrate the
 
 ---
 
+## Testing
+
+Hermes ships with a full unit test suite covering all core modules. Tests run in **complete isolation** — no real database, no network calls, no AI API required.
+
+### Test Stack
+
+| Tool | Role |
+|---|---|
+| `pytest` | Test runner |
+| `pytest-cov` | Coverage reporting |
+| `pytest-mock` | Mock / patching utilities |
+| `SQLite (in-memory)` | Replaces PostgreSQL for DB tests |
+| `unittest.mock` | Patches external I/O (HuggingFace, HTTP) |
+
+### Test Structure
+
+```
+test/
+├── conftest.py               # Shared fixtures (SQLite in-memory DB, transactional sessions)
+├── test_main.py              # parse_cli_args, signal_handler, process_inbox
+├── api/
+│   └── test_health.py        # HealthCheckHandler (200 /health, 404, server start)
+├── core/
+│   ├── test_config.py        # Default values, init_directories (create + idempotent)
+│   ├── test_mover.py         # move_file (atomic move, path return, OSError propagation)
+│   ├── test_reader.py        # read_chunks (chunk size, all rows, columns, empty CSV)
+│   └── test_watcher.py       # get_next_file (FIFO, non-CSV ignored, error → None)
+├── db/
+│   └── test_repository.py    # get_execution_context (fields, ValueError, defaults)
+│                             # save_result (fields, multiple results, stato Errore)
+├── gui/
+│   ├── test_state.py         # WsLogHandler (buffer, trimming, WS send/remove)
+│   ├── test_control_route.py # /api/* routes: status, CRUD pool, CRUD routes, start/stop
+│   ├── test_dashboard_route.py # GET / → HTML 200
+│   └── test_logs_route.py    # /api/logs/download (filtri, 400, Content-Disposition)
+└── workers/
+    ├── test_ai_worker.py     # LocalAIWorker (_is_token_valid cache/network,
+    │                         #   _call_ai params, process cancel/DB error/token error)
+    ├── test_dispatcher.py    # Dispatcher (add/remove/update pool, submit_chunk,
+    │                         #   fallback, stats, full routing table CRUD)
+    └── test_worker_base.py   # FatalWorkerError, WorkerBase ABC enforcement
+```
+
+### Running the Tests
+
+Using `uv` (Recommended):
+
+```bash
+uv run pytest
+```
+
+Using python directly:
+
+```bash
+python -m pytest
+```
+
+Run a specific module:
+
+```bash
+uv run pytest test/workers/test_dispatcher.py -v
+```
+
+### Coverage
+
+The HTML coverage report is automatically generated in `htmlcov/` after each run.
+
+| Module | Coverage |
+|---|---|
+| `src/core/config.py` | 100% |
+| `src/core/mover.py` | 100% |
+| `src/core/reader.py` | 100% |
+| `src/core/watcher.py` | 100% |
+| `src/db/repository.py` | 100% |
+| `src/db/models.py` | 100% |
+| `src/gui/routes/__init__.py` | 100% |
+| `src/gui/routes/dashboard.py` | 100% |
+| `src/gui/state.py` | 100% |
+| `src/api/health.py` | 95% |
+| `src/gui/routes/control.py` | 95% |
+| `src/workers/ai_worker.py` | 94% |
+| `src/workers/dispatcher.py` | 95% |
+| `src/gui/routes/logs.py` | 77% |
+| `src/main.py` | 59% |
+| **TOTAL** | **84%** |
+
+> **Note:** `src/gui/app.py` and `src/main.py` contain code that launches real threads, web servers, and desktop windows (PyWebView/uvicorn). These are integration-level concerns excluded from the unit test scope.
+
+
+---
+
 ## Roadmap
 
 - [x] Core polling loop
@@ -334,6 +438,7 @@ Hermes offers a hybrid desktop dashboard to visually monitor and orchestrate the
 - [x] Prometheus metrics exporter
 - [x] PostgreSQL Database Integration
 - [x] Docker + docker-compose setup
+- [x] Unit test suite (153 tests, 84% overall coverage, 100% on core modules)
 
 ---
 
