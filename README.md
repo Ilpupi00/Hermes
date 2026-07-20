@@ -56,42 +56,42 @@ Hermes/
 ├── docker-compose.yml          # Docker Compose configuration
 ├── Dockerfile                  # Docker image build file
 ├── schema_progetto.sql         # PostgreSQL database schema
-└── src/
-    ├── __init__.py
-    ├── main.py                 # Entry point
-    ├── core/
-    │   ├── __init__.py
-    │   ├── config.py           # Environment variables
-    │   ├── watcher.py          # Directory polling
-    │   ├── mover.py            # Atomic rename
-    │   └── reader.py           # Pandas chunking
-    │
-    ├── db/
-    │   ├── __init__.py
-    │   ├── db.py               # Engine and SessionMaker
-    │   ├── models.py           # SQLAlchemy ORM classes (Tables)
-    │   └── repository.py       # Queries (CRUD)
-    ├── gui/                    # Control Room interface
-    │   ├── app.py              # GUI entry point (FastAPI + PyWebView)
-    │   ├── state.py            # Global shared state (processes, ws)
-    │   ├── pages/
-    │   │   └── index.html      # UI Dashboard
-    │   ├── static/
-    │   │   ├── css/style.css   # Design system (dark mode)
-    │   │   ├── images/
-    │   │   │   └── hermes_logo_v3.png  # Logo served by FastAPI
-    │   │   └── js/
-    │   │       └── app.js      # Frontend Javascript controller
-    │   └── routes/
-    │       ├── __init__.py     # Router aggregator
-    │       ├── control.py      # Engine and thread-pool control routes
-    │       ├── dashboard.py    # Dashboard render route
-    │       └── logs.py         # Log streaming (WS) and export (.txt)
-    └── workers/
-        ├── __init__.py
-        ├── dispatcher.py       # ThreadPool management
-        ├── worker_base.py      # Abstract baseWorker class
-        └── ai_worker.py
+├── src/
+│    ├── __init__.py
+│    ├── main.py                 # Entry point
+│    ├── core/
+│    │   ├── __init__.py
+│    │   ├── config.py           # Environment variables
+│    │   ├── watcher.py          # Directory polling
+│    │   ├── mover.py            # Atomic rename
+│    │   └── reader.py           # Pandas chunking
+│    │
+│    ├── db/
+│    │   ├── __init__.py
+│    │   ├── db.py               # Engine and SessionMaker
+│    │   ├── models.py           # SQLAlchemy ORM classes (Tables)
+│    │   └── repository.py       # Queries (CRUD)
+│    ├── gui/                    # Control Room interface
+│    │   ├── app.py              # GUI entry point (FastAPI + PyWebView)
+│    │   ├── state.py            # Global shared state (processes, ws)
+│    │   ├── pages/
+│    │   │   └── index.html      # UI Dashboard
+│    │   ├── static/
+│    │   │   ├── css/style.css   # Design system (dark mode)
+│    │   │   ├── images/
+│    │   │   │   └── hermes_logo_v3.png  # Logo served by FastAPI
+│    │   │   └── js/
+│    │   │       └── app.js      # Frontend Javascript controller
+│    │   └── routes/
+│    │       ├── __init__.py     # Router aggregator
+│    │       ├── control.py      # Engine and thread-pool control routes
+│    │       ├── dashboard.py    # Dashboard render route
+│    │       └── logs.py         # Log streaming (WS) and export (.txt)
+│    └── workers/
+│        ├── __init__.py
+│        ├── dispatcher.py       # ThreadPool management
+│        ├── worker_base.py      # Abstract baseWorker class
+│        └── ai_worker.py
 └── tests/
     ├── __init__.py
     ├── conftest.py              <-- File speciale di pytest per le configurazioni e i "fixture" (dati fittizi condivisi)
@@ -339,13 +339,13 @@ Hermes ships with a full unit test suite covering all core modules. Tests run in
 
 ### Test Stack
 
-| Tool | Role |
-|---|---|
-| `pytest` | Test runner |
-| `pytest-cov` | Coverage reporting |
-| `pytest-mock` | Mock / patching utilities |
-| `SQLite (in-memory)` | Replaces PostgreSQL for DB tests |
-| `unittest.mock` | Patches external I/O (HuggingFace, HTTP) |
+| Tool                 | Role                                     |
+| -------------------- | ---------------------------------------- |
+| `pytest`             | Test runner                              |
+| `pytest-cov`         | Coverage reporting                       |
+| `pytest-mock`        | Mock / patching utilities                |
+| `SQLite (in-memory)` | Replaces PostgreSQL for DB tests         |
+| `unittest.mock`      | Patches external I/O (HuggingFace, HTTP) |
 
 ### Test Structure
 
@@ -400,27 +400,26 @@ uv run pytest test/workers/test_dispatcher.py -v
 
 The HTML coverage report is automatically generated in `htmlcov/` after each run.
 
-| Module | Coverage |
-|---|---|
-| `src/core/config.py` | 100% |
-| `src/core/mover.py` | 100% |
-| `src/core/reader.py` | 100% |
-| `src/core/watcher.py` | 100% |
-| `src/db/repository.py` | 100% |
-| `src/db/models.py` | 100% |
-| `src/gui/routes/__init__.py` | 100% |
-| `src/gui/routes/dashboard.py` | 100% |
-| `src/gui/state.py` | 100% |
-| `src/api/health.py` | 95% |
-| `src/gui/routes/control.py` | 95% |
-| `src/workers/ai_worker.py` | 94% |
-| `src/workers/dispatcher.py` | 95% |
-| `src/gui/routes/logs.py` | 77% |
-| `src/main.py` | 59% |
-| **TOTAL** | **84%** |
+| Module                        | Coverage |
+| ----------------------------- | -------- |
+| `src/core/config.py`          | 100%     |
+| `src/core/mover.py`           | 100%     |
+| `src/core/reader.py`          | 100%     |
+| `src/core/watcher.py`         | 100%     |
+| `src/db/repository.py`        | 100%     |
+| `src/db/models.py`            | 100%     |
+| `src/gui/routes/__init__.py`  | 100%     |
+| `src/gui/routes/dashboard.py` | 100%     |
+| `src/gui/state.py`            | 100%     |
+| `src/api/health.py`           | 95%      |
+| `src/gui/routes/control.py`   | 95%      |
+| `src/workers/ai_worker.py`    | 94%      |
+| `src/workers/dispatcher.py`   | 95%      |
+| `src/gui/routes/logs.py`      | 77%      |
+| `src/main.py`                 | 59%      |
+| **TOTAL**                     | **84%**  |
 
 > **Note:** `src/gui/app.py` and `src/main.py` contain code that launches real threads, web servers, and desktop windows (PyWebView/uvicorn). These are integration-level concerns excluded from the unit test scope.
-
 
 ---
 
