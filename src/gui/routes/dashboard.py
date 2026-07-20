@@ -9,4 +9,11 @@ async def get_dashboard():
     """Serve la pagina HTML principale."""
     html_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "pages", "index.html"))
     with open(html_path, "r", encoding="utf-8") as f:
-        return HTMLResponse(content=f.read())
+        return HTMLResponse(
+            content=f.read(),
+            headers={
+                "Cache-Control": "no-cache, no-store, must-revalidate",
+                "Pragma": "no-cache",
+                "Expires": "0"
+            }
+        )

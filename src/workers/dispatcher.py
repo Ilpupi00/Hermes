@@ -22,6 +22,7 @@ class Dispatcher:
         config.logger.info(f"status=dispatcher_ready pools=1 worker_class={config.WORKER_CLASS}")
         self.routing_table = {} 
         self.worker = get_worker_instance()
+        self.pool_active_tasks = {"default": 0}
 
     def add_pool(self, pool_name: str, max_workers: int):
         if max_workers < 1:
@@ -32,6 +33,7 @@ class Dispatcher:
         with self.lock:
             if pool_name not in self.pools:
                 self.pools[pool_name] = ThreadPoolExecutor(max_workers=max_workers)
+                self.pool_active_tasks[pool_name] = 0
                 config.logger.info(f"status=pool_created name={pool_name} workers={max_workers}")
                 return True
         return False
@@ -44,6 +46,7 @@ class Dispatcher:
                 
             if pool_name in self.pools:
                 pool = self.pools.pop(pool_name)
+                self.pool_active_tasks.pop(pool_name, None)
                 # wait=False non blocca il sistema, cancel_futures=True svuota la coda
                 pool.shutdown(wait=False, cancel_futures=True)
                 config.logger.warning(f"status=pool_deleted name={pool_name}")
@@ -68,9 +71,11 @@ class Dispatcher:
             # ThreadPoolExecutor non espone un resize pubblico: se cambia la size, creiamo un nuovo pool.
             if current_workers == new_workers:
                 self.pools[new_name] = pool
+                self.pool_active_tasks[new_name] = self.pool_active_tasks.pop(old_name, 0)
             else:
                 new_pool = ThreadPoolExecutor(max_workers=new_workers)
                 self.pools[new_name] = new_pool
+                self.pool_active_tasks[new_name] = 0  # i task vecchi resteranno sul vecchio pool
                 # Non cancelliamo i task già in coda sul vecchio pool; verranno completati.
                 pool.shutdown(wait=False, cancel_futures=False)
                 
@@ -90,17 +95,35 @@ class Dispatcher:
                 else:
                     raise RuntimeError("Nessun thread pool disponibile nel dispatcher.")
         config.logger.info(f"file={metadata['filename']} chunk={metadata['chunk_index']} pool={pool_name_used} status=dispatched rows={len(chunk)}")
-        return pool.submit(self.worker.process, chunk, metadata)
+        
+        with self.lock:
+            if pool_name_used not in self.pool_active_tasks:
+                self.pool_active_tasks[pool_name_used] = 0
+            self.pool_active_tasks[pool_name_used] += 1
+
+        future = pool.submit(self.worker.process, chunk, metadata)
+
+        def on_done(f):
+            with self.lock:
+                if pool_name_used in self.pool_active_tasks:
+                    self.pool_active_tasks[pool_name_used] = max(0, self.pool_active_tasks[pool_name_used] - 1)
+
+        future.add_done_callback(on_done)
+        return future
 
     def get_pool_stats(self):
         stats = {}
         with self.lock:
             for name, pool in self.pools.items():
                 coda_attesa = pool._work_queue.qsize()
+                active_tot = self.pool_active_tasks.get(name, 0)
+                in_esecuzione = max(0, active_tot - coda_attesa)
+                
                 stats[name] = {
                     "max_workers": pool._max_workers,
                     "in_coda": coda_attesa,
-                    "attivi": "Si" if coda_attesa > 0 else "In attesa"
+                    "in_esecuzione": in_esecuzione,
+                    "attivi": "Si" if active_tot > 0 else "In attesa"
                 }
         return stats
 

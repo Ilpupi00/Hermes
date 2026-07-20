@@ -19,7 +19,7 @@ RUN uv pip install --system -r requirements.txt
 COPY src/ ./src/
 
 # Crea le cartelle di base per i CSV
-RUN mkdir -p /app/uploads_web /app/processed /app/failed
+RUN mkdir -p /app/uploads_web /app/processed /app/failed /app/interrupted
 
 # Esponiamo la porta 8000 per la Dashboard Web
 EXPOSE 8000

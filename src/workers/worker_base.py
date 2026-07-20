@@ -10,3 +10,7 @@ class WorkerBase(ABC):
     def process(self, chunk: pd.DataFrame, metadata: dict) -> dict:
         """Elabora un chunk del CSV."""
         pass
+        
+    def preload_model(self, modello: str) -> bool:
+        """Metodo opzionale per pre-caricare un modello in cache (es. pesi HF in memoria)."""
+        pass

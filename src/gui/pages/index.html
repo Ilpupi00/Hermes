@@ -8,7 +8,8 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="/static/css/style.css">
+    <link rel="stylesheet" href="/static/css/style.css?v=4">
+    <link rel="modulepreload" href="/static/js/model_logos.js" as="script">
 </head>
 <body>
 
@@ -41,9 +42,17 @@
                 <span class="nav-icon">◎</span>
                 <span>Routing Modelli</span>
             </a>
+            <a href="#" class="nav-item" data-page="models" onclick="navigate('models', this)">
+                <span class="nav-icon">❖</span>
+                <span>Modelli AI</span>
+            </a>
             <a href="#" class="nav-item" data-page="logs" onclick="navigate('logs', this)">
                 <span class="nav-icon">≡</span>
                 <span>Log di Sistema</span>
+            </a>
+            <a href="#" class="nav-item" data-page="upload" onclick="navigate('upload', this)">
+                <span class="nav-icon">⬆</span>
+                <span>Esegui Job</span>
             </a>
         </nav>
 
@@ -191,8 +200,212 @@
                 </div>
             </section>
 
-        </div>
-    </div>
+            <!-- PAGE: MODELLI AI -->
+            <section id="page-models" class="page">
+                <div class="page-header">
+                    <h2 class="section-title" style="margin:0"><span style="color:var(--indigo); margin-right:6px;">❖</span> Modelli AI</h2>
+                    <span class="models-subtitle">Registra modelli HuggingFace o server locali (vLLM, Ollama, LM Studio)</span>
+                </div>
+
+                <!-- Ricerca HuggingFace -->
+                <div class="models-search-card">
+                    <div class="models-search-header">
+                        <div class="hf-logo-badge"><span style="font-weight:900; margin-right:4px;">HF</span> HuggingFace Hub</div>
+                        <h3 class="card-title" style="margin:0;border:0;padding:0">Ricerca Modelli</h3>
+                    </div>
+                    <div class="models-search-row">
+                        <input type="text" id="hf-search-query" placeholder="Cerca modello... es. mistral, llama, phi" onkeydown="if(event.key==='Enter') searchHuggingFace()">
+                        <select id="hf-search-task">
+                            <option value="text-generation">text-generation</option>
+                            <option value="text2text-generation">text2text-generation</option>
+                            <option value="conversational">conversational</option>
+                            <option value="">Tutti i task</option>
+                        </select>
+                        <button class="btn btn-primary" onclick="searchHuggingFace()" id="btn-hf-search">🔍 Cerca</button>
+                    </div>
+                    <div id="hf-results" class="hf-results-grid"></div>
+                </div>
+
+                <!-- Layout: form + lista modelli registrati -->
+                <div class="models-layout">
+                    <!-- Form Registrazione -->
+                    <div class="card">
+                        <h3 class="card-title" id="model-form-title">Registra Modello</h3>
+                        <input type="hidden" id="model-edit-id">
+                        <div class="form-group">
+                            <label>Nome / ID Modello</label>
+                            <input type="text" id="model-name" placeholder="es. mistralai/Mistral-7B-Instruct-v0.3">
+                        </div>
+                        <div class="form-group">
+                            <label>Tipo</label>
+                            <select id="model-tipo" onchange="onModelTipoChange()">
+                                <option value="hf_api">HuggingFace API (remoto)</option>
+                                <option value="hf_local">HuggingFace (Esecuzione Locale Nativa)</option>
+                                <option value="local_url">Server locale (vLLM / Ollama / LM Studio)</option>
+                            </select>
+                        </div>
+                        <div class="form-group" id="model-endpoint-group" style="display:none">
+                            <label>URL Endpoint Locale</label>
+                            <input type="text" id="model-endpoint" placeholder="es. http://localhost:11434/v1">
+                        </div>
+                        <div class="form-group">
+                            <label>Descrizione (opzionale)</label>
+                            <input type="text" id="model-desc" placeholder="es. Modello veloce per NLP italiano">
+                        </div>
+                        <div style="display:flex;gap:8px;margin-top:4px">
+                            <button class="btn btn-primary w-full" onclick="saveModel()">💾 Salva</button>
+                            <button class="btn btn-ghost" onclick="resetModelForm()" title="Annulla modifica">✕</button>
+                        </div>
+                    </div>
+
+                    <!-- Lista modelli registrati -->
+                    <div class="card">
+                        <h3 class="card-title">Modelli Registrati</h3>
+                        <div id="models-list" class="models-list">
+                            <div class="empty-state-sm">Nessun modello registrato.</div>
+                        </div>
+                    </div>
+                </div>
+                <!-- Pannello test connessione -->
+                <div class="card" id="model-test-panel" style="margin-top:24px;display:none">
+                    <h3 class="card-title">Test Connessione — <span id="test-model-name" style="color:var(--indigo);"></span></h3>
+                    <div class="models-test-layout">
+                        <div class="form-group" id="test-token-group">
+                            <label>Hub Token HF (opzionale se in .env)</label>
+                            <input type="password" id="test-hub-token" placeholder="Lascia vuoto per usare HF_TOKEN" autocomplete="new-password">
+                        </div>
+                        <div class="form-group">
+                            <label>Prompt di test</label>
+                            <input type="text" id="test-prompt" value="Ciao! Rispondi con una parola sola.">
+                        </div>
+                        <button class="btn btn-primary" onclick="testModelConnection()" id="btn-test">▶ Esegui Test</button>
+                    </div>
+                    <div id="test-result" class="test-result" style="display:none"></div>
+                </div>
+            </section>
+
+            <!-- PAGE: ESEGUI JOB (Upload CSV) -->
+            <section id="page-upload" class="page">
+                <div class="page-header">
+                    <h2 class="section-title" style="margin:0"><span style="color:var(--indigo);margin-right:6px">⬆</span>Esegui Job</h2>
+                    <span class="models-subtitle">Carica un CSV reale nella INBOX di Hermes ed eseguilo con un modello AI</span>
+                </div>
+
+                <!-- Banner risultato upload -->
+                <div id="upload-result-banner" class="upload-result-banner" style="display:none"></div>
+
+                <div class="upload-layout">
+
+                    <!-- Colonna sinistra: form configurazione -->
+                    <div class="upload-config-col">
+                        <div class="card">
+                            <h3 class="card-title">Configurazione Job</h3>
+
+                            <!-- Selezione modello -->
+                            <div class="form-group">
+                                <label>Modello AI</label>
+                                <select id="upload-model-select" onchange="onUploadModelChange()">
+                                    <option value="" disabled selected>Caricamento modelli…</option>
+                                </select>
+                            </div>
+
+                            <!-- Token HF (visibile solo per hf_api) -->
+                            <div class="form-group" id="upload-token-row" style="display:none">
+                                <label>HuggingFace Token (se non in .env)</label>
+                                <input type="password" id="upload-hub-token" placeholder="hf_…" autocomplete="new-password">
+                            </div>
+
+                            <!-- Prompt -->
+                            <div class="form-group">
+                                <label>Prompt di sistema</label>
+                                <textarea id="upload-prompt" rows="4"
+                                    placeholder="Esempio: Analizza il sentiment del testo nelle colonne sottostanti e rispondi solo con: Positivo, Negativo o Neutro."
+                                    style="width:100%;resize:vertical;"></textarea>
+                            </div>
+
+                            <!-- Parametri AI -->
+                            <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px">
+                                <div class="form-group" style="margin:0">
+                                    <label>Temperatura</label>
+                                    <input type="number" id="upload-temperatura" value="0.1" min="0" max="2" step="0.1">
+                                </div>
+                                <div class="form-group" style="margin:0">
+                                    <label>Max Tokens</label>
+                                    <input type="number" id="upload-max-tokens" value="500" min="1" max="4096">
+                                </div>
+                                <div class="form-group" style="margin:0">
+                                    <label>Chunk Size</label>
+                                    <input type="number" id="upload-chunk-size" value="1000" min="1" max="10000">
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Drop Zone -->
+                        <div class="card" style="margin-top:16px">
+                            <h3 class="card-title">File CSV</h3>
+                            <div id="csv-drop-zone" class="csv-drop-zone">
+                                <div class="dz-icon">📄</div>
+                                <div class="dz-label">Trascina un CSV qui o <strong>clicca per selezionare</strong></div>
+                                <div class="dz-meta">Formati supportati: CSV UTF-8 · max 50 MB</div>
+                            </div>
+                            <input type="file" id="csv-file-input" accept=".csv" style="display:none">
+
+                            <!-- Anteprima CSV -->
+                            <div id="csv-preview-section" style="display:none;margin-top:14px">
+                                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+                                    <span id="csv-preview-info" class="log-filter-group" style="font-size:11px;color:var(--text-muted)"></span>
+                                </div>
+                                <div class="csv-preview-wrap">
+                                    <table id="csv-preview-table" class="csv-preview-table"></table>
+                                </div>
+                            </div>
+                        </div>
+
+                        <button id="btn-upload-submit" class="btn btn-primary w-full"
+                            style="margin-top:16px;padding:14px;font-size:14px;font-weight:700"
+                            onclick="submitUploadJob()">
+                            ▶ Avvia Elaborazione
+                        </button>
+                    </div>
+
+                    <!-- Colonna destra: job recenti -->
+                    <div class="upload-jobs-col">
+                        <div class="card" style="height:100%">
+                            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+                                <h3 class="card-title" style="margin:0">Job Recenti</h3>
+                                <button class="btn btn-sm btn-ghost" onclick="loadJobs()">↺ Aggiorna</button>
+                            </div>
+                            <div id="jobs-list-container" class="jobs-list">
+                                <div class="empty-state-sm">Nessun job eseguito ancora.</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Pannello risultati di un job -->
+                <div class="card" id="job-results-panel" style="margin-top:24px;display:none">
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+                        <h3 class="card-title" style="margin:0" id="job-results-title">Risultati</h3>
+                        <div style="display:flex;gap:8px;align-items:center">
+                            <span id="job-results-info" style="font-size:11px;color:var(--text-muted)"></span>
+                            <button class="btn btn-sm btn-ghost" onclick="fetchAndRenderResults(currentJobId)">↺</button>
+                            <a id="job-results-download-btn" class="btn btn-sm btn-primary" href="#">⬇ CSV</a>
+                            <button class="btn btn-sm btn-ghost" onclick="closeJobResults()">✕</button>
+                        </div>
+                    </div>
+                    <div class="job-results-table-wrap">
+                        <table class="job-results-table">
+                            <thead>
+                                <tr>
+                                    <th>Riga</th><th>File</th><th>Stato</th><th>Tempo</th><th>Output AI</th>
+                                </tr>
+                            </thead>
+                            <tbody id="job-results-tbody"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+
 
     <!-- MODAL: Add/Edit Pool -->
     <div id="modal-overlay" class="modal-overlay" onclick="closeModal()">
@@ -221,6 +434,8 @@
     <!-- TOAST -->
     <div id="toast" class="toast"></div>
 
-    <script src="/static/js/app.js" defer></script>
+    <script src="/static/js/model_logos.js" defer></script>
+    <script src="/static/js/upload.js?v=2" defer></script>
+    <script src="/static/js/app.js?v=4" defer></script>
 </body>
 </html>

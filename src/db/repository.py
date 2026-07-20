@@ -1,12 +1,18 @@
 from sqlalchemy.orm import Session
 from .models import Esecuzione, Task, Utente, ModelloLLM, Risultato
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Execution context (usato dal HybridWorker)
+# ─────────────────────────────────────────────────────────────────────────────
+
 def get_execution_context(db: Session, id_esecuzione: int) -> dict:
     result = (
         db.query(
-            Utente.hub_token, 
-            Task.prompt, 
+            Utente.hub_token,
+            Task.prompt,
             ModelloLLM.nome_modello,
+            ModelloLLM.tipo,
+            ModelloLLM.endpoint_url,
             Task.temperatura,
             Task.max_tokens
         )
@@ -17,16 +23,18 @@ def get_execution_context(db: Session, id_esecuzione: int) -> dict:
         .filter(Esecuzione.id_esecuzione == id_esecuzione)
         .first()
     )
-        
+
     if not result:
         raise ValueError(f"Esecuzione {id_esecuzione} non trovata.")
-        
+
     return {
-        "hub_token": result.hub_token,
-        "prompt": result.prompt,
+        "hub_token":    result.hub_token,
+        "prompt":       result.prompt,
         "nome_modello": result.nome_modello,
-        "temperatura": result.temperatura if result.temperatura is not None else 0.1,
-        "max_tokens": result.max_tokens if result.max_tokens is not None else 500
+        "tipo":         result.tipo if result.tipo else "hf_api",
+        "endpoint_url": result.endpoint_url,
+        "temperatura":  result.temperatura if result.temperatura is not None else 0.1,
+        "max_tokens":   result.max_tokens  if result.max_tokens  is not None else 500,
     }
 
 def save_result(db: Session, id_esecuzione: int, id_file: int, id_riga_input: int, output: str, tempo_esecuzione: float, stato: str):
@@ -40,3 +48,69 @@ def save_result(db: Session, id_esecuzione: int, id_file: int, id_riga_input: in
     )
     db.add(nuovo_risultato)
     db.flush()
+
+def set_task_status_by_execution(db: Session, id_esecuzione: int, stato: str):
+    esecuzione = db.query(Esecuzione).filter(Esecuzione.id_esecuzione == id_esecuzione).first()
+    if esecuzione:
+        task = db.query(Task).filter(Task.id_task == esecuzione.id_task).first()
+        if task:
+            task.stato = stato
+            db.flush()
+
+# ─────────────────────────────────────────────────────────────────────────────
+# CRUD modelli (usato dalla GUI)
+# ─────────────────────────────────────────────────────────────────────────────
+
+def get_all_models(db: Session) -> list[ModelloLLM]:
+    """Restituisce tutti i modelli registrati."""
+    return db.query(ModelloLLM).order_by(ModelloLLM.id_modello).all()
+
+def get_model_by_id(db: Session, id_modello: int) -> ModelloLLM | None:
+    """Restituisce un modello per ID, o None se non esiste."""
+    return db.query(ModelloLLM).filter(ModelloLLM.id_modello == id_modello).first()
+
+def create_model(
+    db: Session,
+    nome_modello: str,
+    tipo: str = "hf_api",
+    endpoint_url: str | None = None,
+    descrizione: str | None = None,
+) -> ModelloLLM:
+    """Crea e persiste un nuovo ModelloLLM."""
+    modello = ModelloLLM(
+        nome_modello=nome_modello,
+        tipo=tipo,
+        endpoint_url=endpoint_url,
+        descrizione=descrizione,
+    )
+    db.add(modello)
+    db.flush()
+    return modello
+
+def update_model(
+    db: Session,
+    id_modello: int,
+    nome_modello: str | None = None,
+    tipo: str | None = None,
+    endpoint_url: str | None = None,
+    descrizione: str | None = None,
+) -> ModelloLLM | None:
+    """Aggiorna i campi di un ModelloLLM esistente. Restituisce None se non trovato."""
+    modello = get_model_by_id(db, id_modello)
+    if not modello:
+        return None
+    if nome_modello  is not None: modello.nome_modello  = nome_modello
+    if tipo          is not None: modello.tipo          = tipo
+    if endpoint_url  is not None: modello.endpoint_url  = endpoint_url
+    if descrizione   is not None: modello.descrizione   = descrizione
+    db.flush()
+    return modello
+
+def delete_model(db: Session, id_modello: int) -> bool:
+    """Elimina un ModelloLLM per ID. Restituisce True se eliminato, False se non trovato."""
+    modello = get_model_by_id(db, id_modello)
+    if not modello:
+        return False
+    db.delete(modello)
+    db.flush()
+    return True
