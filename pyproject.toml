@@ -14,4 +14,17 @@ dependencies = [
     "sqlalchemy>=2.0.51",
     "tenacity>=9.1.4",
     "requests",
+    "torch",
+    "transformers",
+    "accelerate",
+    "pytest>=9.1.1",
+    "pytest-cov>=7.1.0",
+    "pytest-mock>=3.15.1",
+    "fastapi",
+    "uvicorn",
+    "prometheus-fastapi-instrumentator",
+    "python-multipart",
+    "pywebview",
+    "customtkinter",
+    "websockets"
 ]

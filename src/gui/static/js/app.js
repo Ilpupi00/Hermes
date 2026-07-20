@@ -29,7 +29,9 @@ const PAGE_TITLES = {
     dashboard: 'Dashboard',
     pools:     'Thread Pools',
     routing:   'Routing Modelli',
+    models:    'Modelli AI',
     logs:      'Log di Sistema',
+    upload:    'Esegui Job',
 };
 
 function navigate(pageId, el) {
@@ -48,6 +50,19 @@ function navigate(pageId, el) {
     if (pageId === 'routing') {
         refreshRoutePoolSelect();
         loadRoutes();
+    }
+
+    // Carica i modelli quando si apre la sezione Modelli AI
+    if (pageId === 'models') {
+        loadModels();
+    }
+
+    // Inizializza pagina upload e avvia polling job
+    if (pageId === 'upload') {
+        if (typeof initUploadPage === 'function') initUploadPage();
+        if (typeof startJobsPolling === 'function') startJobsPolling();
+    } else {
+        if (typeof stopJobsPolling === 'function') stopJobsPolling();
     }
 
     return false;
@@ -138,9 +153,9 @@ function renderPools(pools, isRunning) {
     for (const [name, stats] of entries) {
         totalWorkers += (stats.max_workers || 0);
         totalQueue   += (stats.in_coda    || 0);
-        totalActive  += (stats.attivi     || 0);
+        totalActive  += (stats.in_esecuzione || 0);
 
-        const working   = (stats.in_coda || 0) > 0;
+        const working   = (stats.in_esecuzione || 0) > 0 || (stats.in_coda || 0) > 0;
         const safeName  = String(name).replace(/[&<>"'`]/g, '');
         const dotClass  = working ? 'active' : '';
         const cardClass = working ? 'working' : '';
@@ -167,7 +182,7 @@ function renderPools(pools, isRunning) {
                 </div>
                 <div class="pool-stat">
                     <div class="pool-stat-label">Attivi</div>
-                    <div class="pool-stat-value">${stats.attivi ?? 0}</div>
+                    <div class="pool-stat-value">${stats.in_esecuzione ?? 0}</div>
                 </div>
             </div>
         </div>`;
@@ -382,3 +397,365 @@ function showToast(msg, type = 'info') {
 // ── Boot ───────────────────────────────────────────────────────────────
 setInterval(updateStatus, 1500);
 updateStatus();
+
+// ═══════════════════════════════════════════════════════════════════════
+//  MODELLI AI — CRUD + Ricerca HuggingFace
+// ═══════════════════════════════════════════════════════════════════════
+
+let testModelId = null;
+
+// ── Mostra/Nasconde il campo endpoint_url in base al tipo ─────────────
+function onModelTipoChange() {
+    const tipo = document.getElementById('model-tipo').value;
+    const group = document.getElementById('model-endpoint-group');
+    group.style.display = (tipo === 'local_url') ? 'block' : 'none';
+}
+
+// ── Load lista modelli dal backend ────────────────────────────────────
+async function loadModels() {
+    try {
+        // Carica modelli e routes in parallelo
+        const [modRes, routeRes] = await Promise.all([
+            fetch('/api/models'),
+            fetch('/api/routes')
+        ]);
+        const modData   = await modRes.json();
+        const routeData = routeRes.ok ? await routeRes.json() : {routes: {}};
+
+        // Ottieni i pool disponibili dallo stato corrente
+        const statusRes = await fetch('/api/status');
+        const statusData = statusRes.ok ? await statusRes.json() : {pools: {}};
+        const availablePools = Object.keys(statusData.pools || {});
+        const isRunning = statusData.is_running || false;
+
+        renderModels(modData.models || [], routeData.routes || {}, availablePools, isRunning);
+    } catch (e) {
+        document.getElementById('models-list').innerHTML =
+            '<div class="empty-state-sm">Errore caricamento modelli.</div>';
+    }
+}
+
+// ── Render lista modelli ──────────────────────────────────────────────
+function renderModels(models, routes = {}, availablePools = [], isRunning = false) {
+    const container = document.getElementById('models-list');
+    if (models.length === 0) {
+        container.innerHTML = '<div class="empty-state-sm">Nessun modello registrato.</div>';
+        return;
+    }
+
+    const poolOptions = isRunning && availablePools.length > 0
+        ? `<option value="">— Nessuno (usa default) —</option>` +
+          availablePools.map(p => `<option value="${p}">${p}</option>`).join('')
+        : `<option value="" disabled>Avvia Hermes per assegnare</option>`;
+
+    container.innerHTML = models.map(m => {
+        // Provider detection & logo
+        const provider    = (typeof detectProvider === 'function') ? detectProvider(m.nome_modello, m.tipo) : null;
+        const logoHtml    = provider ? getProviderLogoHtml(provider, 34) : '';
+        const provBadge   = provider ? getProviderBadgeHtml(m.nome_modello, m.tipo) : '';
+
+        let badgeLabel = m.tipo;
+        if (m.tipo === 'hf_api')    badgeLabel = 'HF API';
+        else if (m.tipo === 'hf_local') badgeLabel = 'HF Local';
+        else badgeLabel = 'Local Server';
+
+        const endpoint = m.endpoint_url
+            ? `<span title="${m.endpoint_url}">• ${m.endpoint_url.substring(0,28)}${m.endpoint_url.length>28?'…':''}</span>`
+            : '';
+
+        // Pool assignment
+        const assignedPool = routes[m.nome_modello] || null;
+        let poolBadge = '';
+        if (!isRunning) {
+            poolBadge = `<span class="model-pool-badge offline">⚡ Motore offline</span>`;
+        } else if (assignedPool) {
+            poolBadge = `<span class="model-pool-badge assigned">◈ ${assignedPool}</span>`;
+        } else {
+            poolBadge = `<span class="model-pool-badge unassigned">◎ default</span>`;
+        }
+
+        const selectDisabled = !isRunning ? 'disabled' : '';
+        const selectedPool = assignedPool || '';
+        const poolSelectHtml = availablePools.length > 0 || !isRunning
+            ? availablePools.map(p => `<option value="${p}" ${p === selectedPool ? 'selected' : ''}>${p}</option>`).join('')
+            : '';
+
+        const poolSelectOptions = isRunning
+            ? `<option value="" ${!assignedPool ? 'selected' : ''}>— Nessuno (usa default) —</option>${poolSelectHtml}`
+            : `<option value="" disabled selected>Avvia Hermes per assegnare</option>`;
+
+        return `
+        <div class="model-item">
+            <div class="model-item-top">
+                <div class="model-item-logo-wrap">
+                    ${logoHtml}
+                </div>
+                <div class="model-item-info">
+                    <div class="model-item-name" title="${m.nome_modello}">${m.nome_modello}</div>
+                    <div class="model-item-meta">
+                        ${provBadge}
+                        <span class="model-tipo-badge ${m.tipo}">${badgeLabel}</span>
+                        ${endpoint}
+                        ${m.descrizione ? `<span title="${m.descrizione}">${m.descrizione.substring(0,35)}${m.descrizione.length>35?'…':''}</span>` : ''}
+                    </div>
+                </div>
+                <div class="model-item-actions">
+                    ${m.tipo === 'hf_local' ? `<button class="model-action-btn" onclick='preloadModel(${m.id_modello}, ${JSON.stringify(m.nome_modello)})' title="Precarica modello in memoria RAM/VRAM">⚡ Precarica</button>` : ''}
+                    <button class="model-action-btn" onclick='openModelTest(${m.id_modello}, ${JSON.stringify(m.nome_modello)}, ${JSON.stringify(m.tipo)})' title="Testa connessione">Test</button>
+                    <button class="model-action-btn" onclick='editModel(${JSON.stringify(m)})' title="Modifica">Modifica</button>
+                    <button class="model-action-btn danger" onclick='deleteModel(${m.id_modello}, ${JSON.stringify(m.nome_modello)})' title="Elimina">Elimina</button>
+                </div>
+            </div>
+            <div class="model-pool-row">
+                <span class="model-pool-label">Pool →</span>
+                ${poolBadge}
+                <select class="model-pool-select" id="pool-select-${m.id_modello}" ${selectDisabled} onchange='assignModelToPool(${m.id_modello}, ${JSON.stringify(m.nome_modello)}, this.value)'>
+                    ${poolSelectOptions}
+                </select>
+            </div>
+        </div>`;
+    }).join('');
+}
+
+// ── Salva modello (create o update) ──────────────────────────────────
+async function saveModel() {
+    const id           = document.getElementById('model-edit-id').value;
+    const nome_modello = document.getElementById('model-name').value.trim();
+    const tipo         = document.getElementById('model-tipo').value;
+    const endpoint_url = document.getElementById('model-endpoint').value.trim() || null;
+    const descrizione  = document.getElementById('model-desc').value.trim() || null;
+
+    if (!nome_modello) return showToast('Inserisci il nome del modello', 'error');
+    if (tipo === 'local_url' && !endpoint_url) return showToast('Inserisci l\'URL endpoint locale', 'error');
+
+    let res;
+    if (id) {
+        res = await fetch(`/api/models/${id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ nome_modello, tipo, endpoint_url, descrizione })
+        });
+    } else {
+        res = await fetch('/api/models', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ nome_modello, tipo, endpoint_url, descrizione })
+        });
+    }
+
+    if (res.ok) {
+        showToast(id ? 'Modello aggiornato ✓' : 'Modello registrato ✓', 'success');
+        resetModelForm();
+        loadModels();
+    } else {
+        const err = await res.json();
+        showToast(`Errore: ${err.detail || 'Sconosciuto'}`, 'error');
+    }
+}
+
+// ── Popola form per modifica ──────────────────────────────────────────
+function editModel(m) {
+    document.getElementById('model-edit-id').value    = m.id_modello;
+    document.getElementById('model-name').value       = m.nome_modello;
+    document.getElementById('model-tipo').value       = m.tipo;
+    document.getElementById('model-endpoint').value   = m.endpoint_url || '';
+    document.getElementById('model-desc').value       = m.descrizione  || '';
+    document.getElementById('model-form-title').textContent = `Modifica: ${m.nome_modello}`;
+    onModelTipoChange();
+    document.getElementById('model-name').focus();
+}
+
+// ── Reset form ─────────────────────────────────────────────────────────
+function resetModelForm() {
+    document.getElementById('model-edit-id').value    = '';
+    document.getElementById('model-name').value       = '';
+    document.getElementById('model-tipo').value       = 'hf_api';
+    document.getElementById('model-endpoint').value   = '';
+    document.getElementById('model-desc').value       = '';
+    document.getElementById('model-form-title').textContent = 'Registra Modello';
+    onModelTipoChange();
+}
+
+// ── Assegna modello a pool ─────────────────────────────────────────────
+async function assignModelToPool(id, nome, poolName) {
+    const select = document.getElementById(`pool-select-${id}`);
+    if (select) select.disabled = true;
+
+    try {
+        const res = await fetch(`/api/models/${id}/assign-pool`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ pool_name: poolName || null })
+        });
+        const data = await res.json();
+
+        if (data.success) {
+            showToast(data.message, 'success');
+            // Ricarica per aggiornare badge e routing page
+            await loadModels();
+        } else {
+            showToast(`Errore: ${data.message}`, 'error');
+            await loadModels(); // ripristina stato corretto
+        }
+    } catch (e) {
+        showToast(`Errore rete: ${e.message}`, 'error');
+        if (select) select.disabled = false;
+    }
+}
+
+// ── Elimina modello ───────────────────────────────────────────────────
+async function deleteModel(id, nome) {
+    if (!confirm(`Eliminare il modello "${nome}"?`)) return;
+    const res = await fetch(`/api/models/${id}`, { method: 'DELETE' });
+    if (res.ok) {
+        showToast(`Modello "${nome}" eliminato`, 'info');
+        loadModels();
+    } else {
+        showToast('Errore durante eliminazione', 'error');
+    }
+}
+
+// ── Precaricamento modello locale ────────────────────────────────────
+async function preloadModel(id, nome) {
+    if (!confirm(`Vuoi forzare il precaricamento in memoria del modello ${nome}?\nL'operazione può richiedere diversi minuti e usare molta RAM.`)) return;
+
+    showToast(`Pre-caricamento di ${nome} avviato, attendere...`, 'info');
+    try {
+        const resp = await fetch(`/api/models/${id}/preload`, { method: 'POST' });
+        const data = await resp.json();
+        if (resp.ok) {
+            showToast(data.message || `Modello ${nome} precaricato con successo!`, 'success');
+        } else {
+            showToast(data.detail || `Errore precaricamento ${nome}`, 'error');
+        }
+    } catch (err) {
+        console.error(err);
+        showToast("Errore di rete durante il precaricamento", 'error');
+    }
+}
+
+// ── Apre pannello test ────────────────────────────────────────────────
+function openModelTest(id, nome, tipo) {
+    testModelId = id;
+    document.getElementById('test-model-name').textContent = nome;
+    const panel = document.getElementById('model-test-panel');
+    panel.style.display = 'block';
+    // Mostra/nasconde il campo token in base al tipo
+    const tokenGroup = document.getElementById('test-hub-token').closest('.form-group');
+    tokenGroup.style.display = (tipo === 'hf_api') ? '' : 'none';
+    document.getElementById('test-result').style.display = 'none';
+    panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+// ── Esegue test connessione ───────────────────────────────────────────
+async function testModelConnection() {
+    if (!testModelId) return;
+    const btn    = document.getElementById('btn-test');
+    const result = document.getElementById('test-result');
+    btn.disabled = true;
+    btn.textContent = '⏳ In corso...';
+    result.style.display = 'none';
+
+    const payload = {
+        hub_token:  document.getElementById('test-hub-token').value || null,
+        prompt:     document.getElementById('test-prompt').value,
+        max_tokens: 50,
+    };
+
+    try {
+        const res  = await fetch(`/api/models/${testModelId}/test`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+        const data = await res.json();
+
+        result.style.display = 'block';
+        if (data.status === 'ok') {
+            result.className = 'test-result ok';
+            result.textContent = `✓ OK — Risposta:\n${data.risposta}`;
+            showToast('Test superato ✓', 'success');
+        } else {
+            result.className = 'test-result error';
+            result.textContent = `✗ ERRORE:\n${data.detail}`;
+            showToast('Test fallito', 'error');
+        }
+    } catch (e) {
+        result.style.display = 'block';
+        result.className = 'test-result error';
+        result.textContent = `✗ Errore di rete: ${e.message}`;
+    } finally {
+        btn.disabled = false;
+        btn.textContent = '▶ Esegui Test';
+    }
+}
+
+// ── Ricerca HuggingFace Hub ───────────────────────────────────────────
+async function searchHuggingFace() {
+    const query   = document.getElementById('hf-search-query').value.trim();
+    const task    = document.getElementById('hf-search-task').value;
+    const btn     = document.getElementById('btn-hf-search');
+    const grid    = document.getElementById('hf-results');
+
+    btn.disabled = true;
+    grid.innerHTML = '<div class="hf-searching">🔍 Ricerca in corso su HuggingFace Hub...</div>';
+
+    try {
+        const params = new URLSearchParams({ q: query, limit: 12, task });
+        const res    = await fetch(`/api/models/search?${params}`);
+        const data   = await res.json();
+
+        if (!data.results || data.results.length === 0) {
+            grid.innerHTML = '<div class="hf-searching">Nessun risultato trovato.</div>';
+            return;
+        }
+
+        grid.innerHTML = data.results.map(m => {
+            const tagsList = m.tags || [];
+            const tagsHtml = tagsList.slice(0, 4).map(t => `<span class="hf-tag">${t}</span>`).join('');
+            const likes    = m.likes    >= 1000 ? (m.likes/1000).toFixed(1)+'k'    : m.likes;
+            const dl       = m.downloads >= 1000 ? (m.downloads/1000).toFixed(1)+'k' : m.downloads;
+
+            // Provider logo for search results
+            const provider    = (typeof detectProvider === 'function') ? detectProvider(m.id, 'hf_api') : null;
+            const logoSmall   = provider ? getProviderLogoHtml(provider, 24) : '';
+            const provLbl     = provider ? `<span style="color:${provider.color};font-size:10px;font-weight:600;">${provider.label}</span>` : '';
+
+            return `
+            <div class="hf-result-card">
+                <div class="hf-result-header">
+                    ${logoSmall}
+                    <div class="hf-result-id" title="${m.id}">${m.id}</div>
+                </div>
+                <div class="hf-result-meta">
+                    ${provLbl}
+                    <span>❤️ ${likes}</span>
+                    <span>⬇️ ${dl}</span>
+                    ${m.pipeline ? `<span>· ${m.pipeline}</span>` : ''}
+                </div>
+                <div class="hf-result-tags">${tagsHtml}</div>
+                <div class="hf-result-actions">
+                    <button class="btn-hf-add" onclick='prefillModelForm(${JSON.stringify(m.id)})'>+ Aggiungi</button>
+                    <button class="btn-hf-add" style="flex:0;padding:6px 10px;" onclick='window.open("https://huggingface.co/${m.id}","_blank")' title="Apri su HuggingFace">↗</button>
+                </div>
+            </div>`;
+        }).join('');
+
+    } catch (e) {
+        grid.innerHTML = `<div class="hf-searching">Errore: ${e.message}</div>`;
+    } finally {
+        btn.disabled = false;
+    }
+}
+
+// ── Pre-compila form con modello scelto dalla ricerca ─────────────────
+function prefillModelForm(modelId) {
+    resetModelForm();
+    document.getElementById('model-name').value = modelId;
+    document.getElementById('model-tipo').value = 'hf_api';
+    onModelTipoChange();
+    document.getElementById('model-name').focus();
+    // Scroll verso il form
+    document.querySelector('.models-layout').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    showToast(`"${modelId}" pre-compilato nel form ✓`, 'info');
+}

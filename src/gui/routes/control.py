@@ -95,6 +95,9 @@ async def start_hermes(params: StartParams):
     config.POLL_INTERVAL = params.interval
     config.init_directories()
     
+    # Riporta in INBOX eventuali job rimasti a metà o falliti prima dell'avvio
+    hermes_main.recover_interrupted_jobs()
+    
     hermes_main.keep_running = True
     hermes_main.dispatcher = hermes_main.Dispatcher()
     
