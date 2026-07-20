@@ -18,6 +18,7 @@ logger= logging.getLogger("hermes")
 INBOX = Path(os.getenv("HERMES_INBOX", "./uploads_web"))
 ARCHIVE = Path(os.getenv("HERMES_ARCHIVE", "./processed"))
 FAILED = Path(os.getenv("HERMES_FAILED", "./failed"))
+INTERRUPTED = Path(os.getenv("HERMES_INTERRUPTED", "./interrupted"))
 
 POLL_INTERVAL = int(os.getenv("HERMES_POLL_INTERVAL", "60"))
 CHUNK_SIZE = int(os.getenv("HERMES_CHUNK_SIZE", "1000"))
@@ -33,9 +34,13 @@ DB_PORT = os.getenv("DB_PORT", "5432")
 # --- AI LOCALE (vLLM / Ollama) ---
 LOCAL_AI_BASE_URL = os.getenv("HERMES_AI_BASE_URL", "http://localhost:8000/v1")
 
+# --- HUGGINGFACE ---
+HF_TOKEN = os.getenv("HUGGING_FACE", "").strip().strip('"')
+
 # PATH AGGIORNATO ALLA NUOVA STRUTTURA
-WORKER_CLASS = os.getenv("HERMES_WORKER_CLASS", "src.workers.ai_worker.LocalAIWorker")
+WORKER_CLASS = os.getenv("HERMES_WORKER_CLASS", "src.workers.hybrid_worker.HybridWorker")
+
 
 def init_directories():
-    for directory in [INBOX, ARCHIVE, FAILED]:
+    for directory in [INBOX, ARCHIVE, FAILED, INTERRUPTED]:
         directory.mkdir(parents=True,exist_ok=True)

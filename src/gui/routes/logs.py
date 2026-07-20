@@ -9,6 +9,16 @@ router = APIRouter()
 @router.websocket("/ws/logs")
 async def websocket_logs(websocket: WebSocket):
     await websocket.accept()
+    
+    # Invia subito lo storico dei log in memoria per preservarli dopo il ricaricamento pagina
+    for entry in state.log_buffer:
+        try:
+            ts = datetime.fromisoformat(entry["timestamp"]).strftime('%H:%M:%S')
+            ws_msg = f"[{ts}] {entry['message']}"
+            await websocket.send_text(ws_msg)
+        except Exception:
+            pass
+
     state.connected_websockets.append(websocket)
     try:
         while True:

@@ -27,6 +27,8 @@ services:
       - db
     ports:
       - "8000:8000"
+    env_file:
+      - .env
     environment:
       # Puntano al container 'db' invece che a 'localhost'
       - DB_HOST=db
@@ -44,6 +46,7 @@ services:
       - ./uploads_web:/app/uploads_web
       - ./processed:/app/processed
       - ./failed:/app/failed
+      - ./src:/app/src
 
 volumes:
   postgres_data:
