@@ -17,6 +17,7 @@ RUN uv pip install --system -r requirements.txt
 
 # Copia tutto il codice sorgente
 COPY src/ ./src/
+COPY scripts/ ./scripts/
 
 # Crea le cartelle di base per i CSV
 RUN mkdir -p /app/uploads_web /app/processed /app/failed /app/interrupted
