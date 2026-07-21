@@ -583,3 +583,32 @@ ALTER TABLE ONLY public.task
 -- PostgreSQL database dump complete
 --
 
+--
+-- TOC entry (Amministratori)
+--
+CREATE TABLE public.amministratori (
+    id integer NOT NULL,
+    username character varying(50) NOT NULL,
+    hashed_password character varying(255) NOT NULL
+);
+
+ALTER TABLE public.amministratori OWNER TO postgres;
+
+CREATE SEQUENCE public.amministratori_id_seq
+    AS integer
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+ALTER SEQUENCE public.amministratori_id_seq OWNER TO postgres;
+ALTER SEQUENCE public.amministratori_id_seq OWNED BY public.amministratori.id;
+ALTER TABLE ONLY public.amministratori ALTER COLUMN id SET DEFAULT nextval('public.amministratori_id_seq'::regclass);
+
+ALTER TABLE ONLY public.amministratori
+    ADD CONSTRAINT amministratori_pkey PRIMARY KEY (id);
+ALTER TABLE ONLY public.amministratori
+    ADD CONSTRAINT amministratori_username_key UNIQUE (username);
+
+

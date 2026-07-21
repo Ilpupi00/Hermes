@@ -37,3 +37,9 @@ class Risultato(Base):
     output = Column(Text)
     tempo_esecuzione = Column(Float)
     stato = Column(String(50))
+
+class Admin(Base):
+    __tablename__ = "amministratori"
+    id = Column(Integer, primary_key=True, index=True)
+    username = Column(String(50), unique=True, index=True, nullable=False)
+    hashed_password = Column(String(255), nullable=False)

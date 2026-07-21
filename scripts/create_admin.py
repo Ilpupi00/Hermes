@@ -1,0 +1,41 @@
+import sys
+import os
+import argparse
+
+# Aggiunge la directory padre al sys.path per permettere l'importazione dei moduli src
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
+from src.db.db import SessionLocal, Base, engine
+from src.db.models import Admin
+from src.core.security import get_password_hash
+
+def create_admin(username, password):
+    # Assicurati che le tabelle esistano (crea la tabella amministratori se manca)
+    Base.metadata.create_all(bind=engine)
+    
+    db = SessionLocal()
+    try:
+        existing = db.query(Admin).filter(Admin.username == username).first()
+        if existing:
+            print(f"L'amministratore '{username}' esiste già.")
+            return
+
+        hashed_password = get_password_hash(password)
+        new_admin = Admin(username=username, hashed_password=hashed_password)
+        db.add(new_admin)
+        db.commit()
+        db.refresh(new_admin)
+        print(f"Amministratore '{username}' creato con successo! (ID: {new_admin.id})")
+    except Exception as e:
+        print(f"Errore durante la creazione: {e}")
+        db.rollback()
+    finally:
+        db.close()
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Crea un account amministratore per Hermes.")
+    parser.add_argument("username", help="L'username per l'amministratore")
+    parser.add_argument("password", help="La password per l'amministratore")
+    args = parser.parse_args()
+    
+    create_admin(args.username, args.password)

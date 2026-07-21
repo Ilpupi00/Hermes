@@ -9,7 +9,7 @@ from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from prometheus_fastapi_instrumentator import Instrumentator
 
-from .routes import dashboard_router, control_router, logs_router
+from .routes import dashboard_router, control_router, logs_router, auth_router
 from . import state
 from ..core.config import logger # Importiamo il logger globale
 
@@ -32,6 +32,7 @@ async def startup_event():
 app.mount("/static", StaticFiles(directory=os.path.join(os.path.dirname(__file__), "static")), name="static")
 
 # Registrazione delle rotte (Router)
+app.include_router(auth_router)
 app.include_router(dashboard_router)
 app.include_router(control_router)
 app.include_router(logs_router)

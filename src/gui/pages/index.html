@@ -12,6 +12,29 @@
 </head>
 <body>
 
+    <!-- LOGIN OVERLAY -->
+    <div id="login-overlay" class="login-overlay active">
+        <div class="login-card">
+            <div class="login-header">
+                <img src="/static/images/hermes_logo_v3.png" alt="Hermes Logo" style="width:64px;height:64px;object-fit:contain;filter:brightness(0) invert(1);">
+                <h2>HERMES Control Room</h2>
+                <p>Inserisci le credenziali di amministratore</p>
+            </div>
+            <form id="login-form" onsubmit="handleLogin(event)">
+                <div class="form-group">
+                    <label for="username">Username</label>
+                    <input type="text" id="username" name="username" required>
+                </div>
+                <div class="form-group">
+                    <label for="password">Password</label>
+                    <input type="password" id="password" name="password" required>
+                </div>
+                <div id="login-error" class="login-error"></div>
+                <button type="submit" class="btn btn-start" style="width: 100%; margin-top: 1rem; justify-content: center;">Accedi</button>
+            </form>
+        </div>
+    </div>
+
     <!-- SIDEBAR -->
     <aside id="sidebar">
         <div class="sidebar-brand">

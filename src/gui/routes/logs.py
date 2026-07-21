@@ -1,8 +1,9 @@
-from fastapi import APIRouter, WebSocket, Query
+from fastapi import APIRouter, WebSocket, Query, Depends
 from fastapi.responses import PlainTextResponse
 from starlette.websockets import WebSocketDisconnect
 from datetime import datetime
 from .. import state
+from ...core.security import get_current_admin
 
 router = APIRouter()
 
@@ -20,7 +21,7 @@ async def websocket_logs(websocket: WebSocket):
             state.connected_websockets.remove(websocket)
 
 
-@router.get("/api/logs/download")
+@router.get("/api/logs/download", dependencies=[Depends(get_current_admin)])
 async def download_logs(
     start: str = Query(None, description="Data inizio ISO (es. 2026-06-27T00:00:00)"),
     end: str = Query(None, description="Data fine ISO (es. 2026-06-27T23:59:59)")
