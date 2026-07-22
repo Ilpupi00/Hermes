@@ -36,7 +36,7 @@ Hermes is an **independent background process** that watches a shared inbox fold
 
 Hermes is **Process 2** in a two-process system. It shares no memory, no imports, and no state with the Web App. The only communication channel between the two is the **shared file system** and the PostgreSQL database.
 
-![Architecture](./docs/images/async_batch_processing_architecture.svg)
+![Architecture](./docs/images/Code_Generated_Image.png)
 
 ---
 

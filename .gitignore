@@ -4,3 +4,7 @@ uv.lock
 test_reviews.csv
 test_reviews_output.csv
 results
+failed
+interrupted
+pending
+archive

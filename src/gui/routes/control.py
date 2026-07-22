@@ -4,15 +4,17 @@ import subprocess
 import threading
 import time
 import datetime as dt
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
 
 from .. import state
 from ...core import config
 from ... import main as hermes_main
+from src.workers.dispatcher import Dispatcher
+from src.core.security import get_current_admin
 from scheduler import Scheduler
 
-router = APIRouter(prefix="/api")
+router = APIRouter(prefix="/api", dependencies=[Depends(get_current_admin)])
 
 class StartParams(BaseModel):
     workers: int = Field(..., ge=1)
