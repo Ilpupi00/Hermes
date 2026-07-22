@@ -2,6 +2,9 @@ from fastapi import APIRouter, WebSocket, Query
 from fastapi.responses import PlainTextResponse
 from starlette.websockets import WebSocketDisconnect
 from datetime import datetime
+from typing import Optional
+from fastapi import Depends
+from src.core.security import get_current_admin
 from .. import state
 
 router = APIRouter()
@@ -32,8 +35,9 @@ async def websocket_logs(websocket: WebSocket):
 
 @router.get("/api/logs/download")
 async def download_logs(
-    start: str = Query(None, description="Data inizio ISO (es. 2026-06-27T00:00:00)"),
-    end: str = Query(None, description="Data fine ISO (es. 2026-06-27T23:59:59)")
+    start: Optional[str] = Query(None, description="Data inizio ISO (es. 2026-06-27T00:00:00)"),
+    end: Optional[str] = Query(None, description="Data fine ISO (es. 2026-06-27T23:59:59)"),
+    _: None = Depends(get_current_admin)
 ):
     """Scarica i log in formato .txt, con filtro opzionale per data."""
     entries = state.log_buffer
