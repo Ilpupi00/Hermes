@@ -10,6 +10,12 @@ class Utente(Base):
     password = Column(String(255), nullable=False, default="default")
     hub_token = Column(String(255))
 
+class Admin(Base):
+    __tablename__ = "amministratori"
+    id = Column(Integer, primary_key=True, index=True)
+    username = Column(String(50), unique=True, index=True, nullable=False)
+    hashed_password = Column(String(255), nullable=False)
+
 class ModelloLLM(Base):
     __tablename__ = "modellillm"
     id_modello    = Column(Integer, primary_key=True, index=True)

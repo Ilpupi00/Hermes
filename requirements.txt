@@ -13,6 +13,8 @@ anyio==4.14.1
     #   httpx
     #   openai
     #   starlette
+bcrypt==5.0.0
+    # via hermes (pyproject.toml)
 bottle==0.13.4
     # via pywebview
 certifi==2026.6.17
@@ -139,6 +141,8 @@ pygments==2.20.0
     # via
     #   pytest
     #   rich
+pyjwt==2.13.0
+    # via hermes (pyproject.toml)
 pytest==9.1.1
     # via
     #   hermes (pyproject.toml)

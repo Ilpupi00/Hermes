@@ -9,7 +9,7 @@ from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from prometheus_fastapi_instrumentator import Instrumentator
 
-from .routes import dashboard_router, control_router, logs_router, models_router, upload_router
+from .routes import dashboard_router, control_router, logs_router, models_router, upload_router, auth_router
 from . import state
 from ..core.config import logger # Importiamo il logger globale
 
@@ -36,6 +36,7 @@ app.include_router(control_router)
 app.include_router(logs_router)
 app.include_router(models_router)
 app.include_router(upload_router)
+app.include_router(auth_router)
 
 # --- AVVIO APP IBRIDA ---
 def run_fastapi():

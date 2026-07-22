@@ -26,5 +26,7 @@ dependencies = [
     "python-multipart",
     "pywebview",
     "customtkinter",
-    "websockets"
+    "websockets",
+    "bcrypt>=5.0.0",
+    "pyjwt>=2.13.0",
 ]

@@ -1,9 +1,70 @@
 /* ===========================================
    HERMES — app.js
-   Nessuna modifica alla logica dei Thread Pool.
-   Solo UI: navigazione, rendering, modal, toast.
    =========================================== */
 
+// ── Auth & API Interceptor ────────────────────────────────────────────
+const originalFetch = window.fetch;
+window.fetch = async function() {
+    let [resource, config] = arguments;
+    if (!config) config = {};
+    if (!config.headers) config.headers = {};
+    
+    const token = localStorage.getItem('hermes_admin_token');
+    if (token) {
+        if (config.headers instanceof Headers) {
+            config.headers.append('Authorization', `Bearer ${token}`);
+        } else {
+            config.headers['Authorization'] = `Bearer ${token}`;
+        }
+    }
+    
+    const response = await originalFetch(resource, config);
+    if (response.status === 401) {
+        document.getElementById('login-overlay').classList.add('active');
+        localStorage.removeItem('hermes_admin_token');
+    }
+    return response;
+};
+
+async function handleLogin(e) {
+    e.preventDefault();
+    const form = new FormData();
+    form.append('username', document.getElementById('username').value);
+    form.append('password', document.getElementById('password').value);
+    
+    try {
+        const response = await originalFetch('/api/auth/token', {
+            method: 'POST',
+            body: form
+        });
+        
+        if (response.ok) {
+            const data = await response.json();
+            localStorage.setItem('hermes_admin_token', data.access_token);
+            document.getElementById('login-overlay').classList.remove('active');
+            document.getElementById('login-error').textContent = '';
+            document.getElementById('password').value = '';
+            updateStatus();
+        } else {
+            document.getElementById('login-error').textContent = 'Credenziali non valide';
+        }
+    } catch (err) {
+        document.getElementById('login-error').textContent = 'Errore di connessione';
+    }
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    if (!localStorage.getItem('hermes_admin_token')) {
+        document.getElementById('login-overlay').classList.add('active');
+    } else {
+        document.getElementById('login-overlay').classList.remove('active');
+    }
+});
+
+function handleLogout() {
+    localStorage.removeItem('hermes_admin_token');
+    document.getElementById('login-overlay').classList.add('active');
+}
 // ── WebSocket logs ──────────────────────────────────────────────────
 const wsProto = window.location.protocol === 'https:' ? 'wss' : 'ws';
 const ws = new WebSocket(`${wsProto}://${window.location.host}/ws/logs`);
@@ -373,10 +434,25 @@ function downloadLogs() {
     if (toISO(endEl))   params.set('end',   toISO(endEl));
     if ([...params].length) url += '?' + params.toString();
 
-    const a = document.createElement('a');
-    a.href = url; a.download = ''; document.body.appendChild(a);
-    a.click(); document.body.removeChild(a);
-    showToast('Download avviato', 'info');
+    fetch(url)
+        .then(res => {
+            if (!res.ok) throw new Error('Download failed');
+            return res.blob();
+        })
+        .then(blob => {
+            const objUrl = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = objUrl; 
+            a.download = `hermes_logs.txt`; 
+            document.body.appendChild(a);
+            a.click(); 
+            document.body.removeChild(a);
+            window.URL.revokeObjectURL(objUrl);
+            showToast('Download avviato', 'info');
+        })
+        .catch(e => {
+            showToast('Errore download', 'error');
+        });
 }
 
 function clearTerminal() {
