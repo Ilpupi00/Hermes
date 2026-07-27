@@ -37,14 +37,14 @@ class TestMoveFile:
         assert result == dest_dir / "report.csv"
         assert isinstance(result, Path)
 
-    def test_raises_when_rename_fails(self, tmp_path):
-        """Se os.rename solleva un'eccezione, move_file deve propagarla."""
+    def test_raises_when_move_fails(self, tmp_path):
+        """Se shutil.move solleva un'eccezione, move_file deve propagarla."""
         source = tmp_path / "bad.csv"
         source.write_text("data", encoding="utf-8")
         dest_dir = tmp_path / "dest"
         dest_dir.mkdir()
 
-        with patch("src.core.mover.os.rename", side_effect=OSError("disk full")):
+        with patch("src.core.mover.shutil.move", side_effect=OSError("disk full")):
             with pytest.raises(OSError, match="disk full"):
                 move_file(source, dest_dir)
 

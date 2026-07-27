@@ -5,8 +5,13 @@ Usa SQLite in-memory tramite SQLAlchemy per isolare i test
 dal database PostgreSQL di produzione.
 """
 import pytest
+import os
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
+
+# Le route di autenticazione richiedono una chiave esplicita. Questa è una
+# credenziale fittizia limitata al processo di test.
+os.environ.setdefault("SECRET_KEY", "test-only-secret-key-not-for-production")
 
 # Importiamo Base dai models per poter creare le tabelle in-memory
 from src.db.models import Base

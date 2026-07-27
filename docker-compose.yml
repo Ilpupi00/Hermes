@@ -9,12 +9,17 @@ services:
       POSTGRES_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD in .env}
       POSTGRES_DB: ${DB_NAME:?Set DB_NAME in .env}
     ports:
-      - "${DB_PORT:-5432}:5432"
+      - "127.0.0.1:${DB_PORT:-5432}:5432"
     volumes:
       # Persistenza dei dati del DB (se spegni il container, i dati restano)
       - postgres_data:/var/lib/postgresql/data
       # Inietta il tuo schema SQL all'avvio!
       - ./schema_progetto.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\""]
+      interval: 5s
+      timeout: 5s
+      retries: 10
 
   # --- IL MOTORE HERMES (AI SCHEDULER & DASHBOARD) ---
   hermes:
@@ -22,9 +27,10 @@ services:
     container_name: hermes_app
     restart: always
     depends_on:
-      - db
+      db:
+        condition: service_healthy
     ports:
-      - "8000:8000"
+      - "127.0.0.1:8000:8000"
     environment:
       # Puntano al container 'db' invece che a 'localhost'
       - DB_HOST=db
@@ -52,7 +58,20 @@ services:
       - ./uploads_web:/app/uploads_web
       - ./processed:/app/processed
       - ./failed:/app/failed
+      - ./interrupted:/app/interrupted
       - ./src:/app/src
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=3)",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
 
 volumes:
   postgres_data:

@@ -123,16 +123,48 @@ Hermes now supports full containerization with Docker and Docker Compose. This w
 ```bash
 git clone https://github.com/your-org/hermes.git
 cd hermes
+cp .env.example .env
+# Replace every change-me value in .env
 docker compose up -d --build
 ```
 
 This command will automatically:
 
-- Start a `postgres:16-alpine` database and initialize it with `schema_progetto.sql`.
-- Build and start the `hermes_app` container, mounting the local `uploads_web`, `processed`, and `failed` folders so you can easily drop CSV files from your host machine.
+- Start a `postgres:16-alpine` database and initialize an empty volume with
+  `schema_progetto.sql`.
+- Wait for PostgreSQL to be ready before starting Hermes.
+- Build and start the `hermes_app` container, mounting the local
+  `uploads_web`, `processed`, `failed`, and `interrupted` folders.
 - Expose the Control Room dashboard on port `8000`.
 
 You can access the Control Room dashboard at [http://localhost:8000](http://localhost:8000).
+Readiness can be checked at
+[http://localhost:8000/health](http://localhost:8000/health); it returns HTTP
+200 only when both the web application and PostgreSQL are reachable.
+
+On a new database, create the first Control Room administrator from a terminal:
+
+```bash
+docker exec -it hermes_app python scripts/create_admin.py <username>
+```
+
+Replace `<username>` with the desired login name. The script asks for the
+password and confirmation without displaying or storing them in shell history.
+Use at least eight characters. Each local installation has its own
+administrator account.
+
+The initialization SQL is executed by PostgreSQL only when its Docker volume
+is empty. During this pre-migration development phase, rebuilding an already
+initialized database from the current schema requires:
+
+```bash
+docker compose down -v  # destructive: removes the local PostgreSQL data
+docker compose up -d --build
+```
+
+Do not run `docker compose down -v` when the local database contains data that
+must be retained. Versioned database upgrades will be introduced with Alembic
+in a later phase.
 
 ### Local Installation (Without Docker)
 
@@ -143,6 +175,19 @@ git clone https://github.com/your-org/hermes.git
 cd hermes
 uv sync
 ```
+
+Install only the optional capabilities that are needed:
+
+```bash
+uv sync --extra dev         # test and coverage tools
+uv sync --extra desktop     # native PyWebView window
+uv sync --extra local-llm   # PyTorch/Transformers inference on the host
+```
+
+On Apple Silicon, native `local-llm` inference must run on macOS to use MPS.
+The Docker image intentionally excludes PyTorch and Transformers because its
+Linux environment cannot use the Mac GPU. Docker still supports Hugging Face
+remote inference and OpenAI-compatible servers such as Ollama.
 
 Using standard `pip`:
 
