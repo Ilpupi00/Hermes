@@ -7,9 +7,14 @@ from sqlalchemy.orm import Session
 from src.db.db import SessionLocal
 import bcrypt
 
-SECRET_KEY = os.getenv("SECRET_KEY", "hermes_super_secret_key_2026")
+SECRET_KEY = os.getenv("SECRET_KEY")
+if not SECRET_KEY or SECRET_KEY.startswith("change-me"):
+    raise RuntimeError(
+        "SECRET_KEY non configurata: copia .env.example in .env e genera una chiave casuale."
+    )
+
 ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 * 7 # 1 settimana
+ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "10080"))
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/token")
 

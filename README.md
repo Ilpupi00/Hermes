@@ -158,13 +158,23 @@ uv pip install -r requirements.txt
 
 ```bash
 cp .env.example .env
-# Edit .env with your values
+# Sostituisci tutti i valori change-me e inserisci gli eventuali token
 ```
+
+Genera una chiave JWT distinta per questo ambiente:
+
+```bash
+openssl rand -hex 32
+```
+
+Inserisci il risultato in `SECRET_KEY` dentro `.env`. Il file `.env` è
+ignorato da Git: non commetterlo e non condividere token, password o chiavi
+negli screenshot.
 
 Create the required folders (Hermes will also create them on startup if missing):
 
 ```bash
-mkdir -p uploads_web processed failed
+mkdir -p uploads_web processed failed interrupted
 ```
 
 ### Run
@@ -203,27 +213,30 @@ python -m src.gui.app
 
 All settings are loaded from environment variables or a `.env` file in the project root.
 
-| Variable               | Default         | Description                                       |
-| ---------------------- | --------------- | ------------------------------------------------- |
-| `HERMES_INBOX`         | `./uploads_web` | Folder watched for incoming CSV files             |
-| `HERMES_ARCHIVE`       | `./processed`   | Destination for successfully processed files      |
-| `HERMES_FAILED`        | `./failed`      | Destination for files that exceeded max retries   |
-| `HERMES_POLL_INTERVAL` | `60`            | Seconds between each scan of the inbox            |
-| `HERMES_CHUNK_SIZE`    | `1000`          | Number of rows per chunk (Pandas chunksize)       |
-| `HERMES_MAX_WORKERS`   | `4`             | Max parallel threads in the ThreadPoolExecutor    |
-| `HERMES_MAX_RETRIES`   | `3`             | Max worker retry attempts before moving to failed |
+| Variable                      | Default / requirement | Description                                        |
+| ----------------------------- | --------------------- | -------------------------------------------------- |
+| `DB_HOST`                     | `localhost`           | PostgreSQL host (`db` in Docker Compose)            |
+| `DB_PORT`                     | `5432`                | PostgreSQL port                                     |
+| `DB_NAME`                     | `postgres`            | PostgreSQL database                                 |
+| `DB_USER`                     | `postgres`            | PostgreSQL user                                     |
+| `DB_PASSWORD`                 | required in Docker    | PostgreSQL password                                 |
+| `SECRET_KEY`                  | required              | Random key used to sign JWT                         |
+| `ACCESS_TOKEN_EXPIRE_MINUTES` | `10080`               | JWT lifetime in minutes                             |
+| `HF_TOKEN`                    | optional              | Hugging Face token for remote/private models        |
+| `HERMES_INBOX`                | `./uploads_web`       | Folder watched for incoming CSV files               |
+| `HERMES_ARCHIVE`              | `./processed`         | Destination for successfully processed files        |
+| `HERMES_FAILED`               | `./failed`            | Destination for files that exceeded max retries     |
+| `HERMES_INTERRUPTED`          | `./interrupted`       | Destination for interrupted files                   |
+| `HERMES_POLL_INTERVAL`        | `60`                  | Seconds between each scan of the inbox              |
+| `HERMES_CHUNK_SIZE`           | `1000`                | Number of rows per chunk (Pandas chunksize)         |
+| `HERMES_MAX_WORKERS`          | `4`                   | Max parallel threads in the ThreadPoolExecutor      |
+| `HERMES_MAX_RETRIES`          | `3`                   | Max retry attempts before moving to failed          |
+| `HERMES_WORKER_CLASS`         | `HybridWorker`        | Import path of the worker implementation            |
+| `HERMES_AI_BASE_URL`          | local URL             | Endpoint for an OpenAI-compatible local server      |
 
-`.env.example`:
-
-```env
-HERMES_INBOX=./uploads_web
-HERMES_ARCHIVE=./processed
-HERMES_FAILED=./failed
-HERMES_POLL_INTERVAL=60
-HERMES_CHUNK_SIZE=1000
-HERMES_MAX_WORKERS=4
-HERMES_MAX_RETRIES=3
-```
+The complete, sanitized template is tracked in `.env.example`. The legacy
+variable `HUGGING_FACE` is temporarily accepted, but new configurations must
+use `HF_TOKEN`.
 
 ---
 
