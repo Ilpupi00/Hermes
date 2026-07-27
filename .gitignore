@@ -1,6 +1,11 @@
 uv.lock
 .venv
 .env
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.coverage
+htmlcov/
 test_reviews.csv
 test_reviews_output.csv
 results

@@ -14,7 +14,7 @@ if not SECRET_KEY or SECRET_KEY.startswith("change-me"):
     )
 
 ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "10080"))
+ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "10080")) # 10080 = 60 * 24 * 7 = 1 settimana
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/token")
 

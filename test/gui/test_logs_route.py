@@ -11,6 +11,7 @@ from fastapi.testclient import TestClient
 from datetime import datetime, timedelta
 
 from src.gui.routes.logs import router
+from src.core.security import get_current_admin
 import src.gui.state as state
 
 
@@ -22,6 +23,7 @@ import src.gui.state as state
 def client():
     app = FastAPI()
     app.include_router(router)
+    app.dependency_overrides[get_current_admin] = lambda: object()
     return TestClient(app)
 
 

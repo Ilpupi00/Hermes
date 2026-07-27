@@ -102,7 +102,11 @@ class TestProcessInbox:
         fake_file = Path("fake_file.csv")
 
         with patch("src.main.get_next_file", return_value=fake_file), \
-             patch("src.main.move_file", side_effect=OSError("disk full")):
+             patch("src.main.move_file", side_effect=OSError("disk full")), \
+             patch(
+                 "src.main.file_monitor_pool.submit",
+                 side_effect=lambda fn, arg: fn(arg),
+             ):
             main_module.process_inbox()
 
         d.submit_chunk.assert_not_called()
@@ -123,7 +127,11 @@ class TestProcessInbox:
              patch("src.main.move_file", return_value=processed) as mock_move, \
              patch("src.main.read_chunks", return_value=iter([fake_chunk])), \
              patch("src.main.dispatcher") as mock_disp, \
-             patch("src.main.concurrent.futures.as_completed", return_value=iter([mock_future])):
+             patch("src.main.concurrent.futures.as_completed", return_value=iter([mock_future])), \
+             patch(
+                 "src.main.file_monitor_pool.submit",
+                 side_effect=lambda fn, arg: fn(arg),
+             ):
 
             mock_disp.submit_chunk.return_value = mock_future
             main_module.process_inbox()
@@ -147,7 +155,11 @@ class TestProcessInbox:
              patch("src.main.move_file", return_value=processed), \
              patch("src.main.read_chunks", return_value=iter([fake_chunk])), \
              patch("src.main.dispatcher") as mock_disp, \
-             patch("src.main.concurrent.futures.as_completed", return_value=iter([mock_future])):
+             patch("src.main.concurrent.futures.as_completed", return_value=iter([mock_future])), \
+             patch(
+                 "src.main.file_monitor_pool.submit",
+                 side_effect=lambda fn, arg: fn(arg),
+             ):
 
             mock_disp.submit_chunk.return_value = mock_future
             main_module.process_inbox()  # Non deve sollevare eccezioni

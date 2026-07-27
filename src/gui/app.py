@@ -2,14 +2,21 @@ import os
 import time
 import threading
 import uvicorn
-import webview
 import logging
 import asyncio
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from prometheus_fastapi_instrumentator import Instrumentator
 
-from .routes import dashboard_router, control_router, logs_router, models_router, upload_router, auth_router
+from .routes import (
+    auth_router,
+    control_router,
+    dashboard_router,
+    health_router,
+    logs_router,
+    models_router,
+    upload_router,
+)
 from . import state
 from ..core.config import logger # Importiamo il logger globale
 
@@ -37,6 +44,7 @@ app.include_router(logs_router)
 app.include_router(models_router)
 app.include_router(upload_router)
 app.include_router(auth_router)
+app.include_router(health_router)
 
 # --- AVVIO APP IBRIDA ---
 def run_fastapi():
@@ -44,6 +52,13 @@ def run_fastapi():
     uvicorn.run(app, host="127.0.0.1", port=8000, log_level="critical")
 
 def main():
+    try:
+        import webview
+    except ImportError as exc:
+        raise RuntimeError(
+            "PyWebView non installato. Installa Hermes con l'extra 'desktop'."
+        ) from exc
+
     t = threading.Thread(target=run_fastapi, daemon=True)
     t.start()
     

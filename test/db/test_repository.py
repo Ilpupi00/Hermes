@@ -16,7 +16,12 @@ from src.db.models import Utente, ModelloLLM, Task, Esecuzione, Risultato
 
 def _create_full_context(session, *, temperatura=0.7, max_tokens=200):
     """Inserisce utente, modello, task ed esecuzione e restituisce l'id_esecuzione."""
-    utente = Utente(hub_token="hf_test_token")
+    utente = Utente(
+        username="test-user",
+        email="test-user@hermes.local",
+        password="test-password",
+        hub_token="hf_test_token",
+    )
     session.add(utente)
     session.flush()
 

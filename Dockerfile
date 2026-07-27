@@ -11,9 +11,11 @@ WORKDIR /app
 # Installa 'uv' per una gestione rapidissima delle dipendenze
 RUN pip install --no-cache-dir uv
 
-# Copia i file delle dipendenze e installale a livello di sistema nel container
-COPY requirements.txt .
-RUN uv pip install --system -r requirements.txt
+# Il runtime Docker usa API remote o server OpenAI-compatible. Le dipendenze
+# native Transformers/PyTorch restano opzionali sul sistema host: su Apple
+# Silicon una build Linux scaricherebbe inutilmente librerie CUDA.
+COPY requirements-runtime.txt .
+RUN uv pip install --system -r requirements-runtime.txt
 
 # Copia tutto il codice sorgente
 COPY src/ ./src/
