@@ -6,13 +6,11 @@ import hmac
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-from src.db.db import SessionLocal, Base, engine
+from src.db.db import SessionLocal
 from src.db.models import Admin
 from src.core.security import get_password_hash
 
 def create_admin(username, password):
-    Base.metadata.create_all(bind=engine)
-    
     db = SessionLocal()
     try:
         existing = db.query(Admin).filter(Admin.username == username).first()

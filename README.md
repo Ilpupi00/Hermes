@@ -51,11 +51,11 @@ Hermes/
 ├── pyproject.toml
 ├── requirements.txt
 ├── uv.lock
+├── alembic.ini
 ├── .env
 ├── .python-version
 ├── docker-compose.yml          # Docker Compose configuration
 ├── Dockerfile                  # Docker image build file
-├── schema_progetto.sql         # PostgreSQL database schema
 ├── src/
 │    ├── __init__.py
 │    ├── main.py                 # Entry point
@@ -70,6 +70,8 @@ Hermes/
 │    │   ├── __init__.py
 │    │   ├── db.py               # Engine and SessionMaker
 │    │   ├── models.py           # SQLAlchemy ORM classes (Tables)
+│    │   ├── status.py           # Canonical job/result states
+│    │   ├── migrations/         # Versioned Alembic schema
 │    │   └── repository.py       # Queries (CRUD)
 │    ├── gui/                    # Control Room interface
 │    │   ├── app.py              # GUI entry point (FastAPI + PyWebView)
@@ -113,7 +115,7 @@ Hermes/
 ### Prerequisites
 
 - Docker and Docker Compose (Recommended)
-- Python 3.10+ (If running locally without Docker)
+- Python 3.12+ (if running locally without Docker)
 - pip or uv
 
 ### Running with Docker (Recommended)
@@ -121,7 +123,7 @@ Hermes/
 Hermes now supports full containerization with Docker and Docker Compose. This will spin up the Hermes engine/GUI and a PostgreSQL database automatically.
 
 ```bash
-git clone https://github.com/your-org/hermes.git
+git clone --branch develop https://github.com/Ilpupi00/Hermes.git
 cd hermes
 cp .env.example .env
 # Replace every change-me value in .env
@@ -130,9 +132,9 @@ docker compose up -d --build
 
 This command will automatically:
 
-- Start a `postgres:16-alpine` database and initialize an empty volume with
-  `schema_progetto.sql`.
+- Start a `postgres:16-alpine` database.
 - Wait for PostgreSQL to be ready before starting Hermes.
+- Run `alembic upgrade head` before starting the Control Room.
 - Build and start the `hermes_app` container, mounting the local
   `uploads_web`, `processed`, `failed`, and `interrupted` folders.
 - Expose the Control Room dashboard on port `8000`.
@@ -153,25 +155,23 @@ password and confirmation without displaying or storing them in shell history.
 Use at least eight characters. Each local installation has its own
 administrator account.
 
-The initialization SQL is executed by PostgreSQL only when its Docker volume
-is empty. During this pre-migration development phase, rebuilding an already
-initialized database from the current schema requires:
+Schema upgrades are versioned with Alembic and are applied automatically at
+container startup. To inspect or apply them manually:
 
 ```bash
-docker compose down -v  # destructive: removes the local PostgreSQL data
-docker compose up -d --build
+docker compose exec hermes alembic current
+docker compose exec hermes alembic upgrade head
 ```
 
-Do not run `docker compose down -v` when the local database contains data that
-must be retained. Versioned database upgrades will be introduced with Alembic
-in a later phase.
+`docker compose down -v` is required only for an intentionally destructive,
+clean database reset; it is not the normal upgrade procedure.
 
 ### Local Installation (Without Docker)
 
 Using `uv` (Recommended):
 
 ```bash
-git clone https://github.com/your-org/hermes.git
+git clone --branch develop https://github.com/Ilpupi00/Hermes.git
 cd hermes
 uv sync
 ```
@@ -192,7 +192,7 @@ remote inference and OpenAI-compatible servers such as Ollama.
 Using standard `pip`:
 
 ```bash
-git clone https://github.com/your-org/hermes.git
+git clone --branch develop https://github.com/Ilpupi00/Hermes.git
 cd hermes
 uv venv
 source .venv/bin/activate       # Windows: .venv\Scripts\activate
@@ -220,6 +220,12 @@ Create the required folders (Hermes will also create them on startup if missing)
 
 ```bash
 mkdir -p uploads_web processed failed interrupted
+```
+
+Apply pending database migrations:
+
+```bash
+uv run alembic upgrade head
 ```
 
 ### Run
@@ -393,7 +399,10 @@ Hermes offers a hybrid desktop dashboard to visually monitor and orchestrate the
 
 ## Testing
 
-Hermes ships with a full unit test suite covering all core modules. Tests run in **complete isolation** — no real database, no network calls, no AI API required.
+Hermes ships with a unit test suite covering all core modules. Unit tests run
+in isolation with SQLite and mocked external services. The canonical Alembic
+migration is additionally verified against a real PostgreSQL container with
+`alembic upgrade`, `downgrade` and `check`.
 
 ### Test Stack
 

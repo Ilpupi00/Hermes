@@ -1,6 +1,7 @@
 # Runtime used by the Docker web application and remote/local-server workers.
 # Native Transformers inference is intentionally excluded; install the
 # `local-llm` optional dependency group on the host when it is required.
+alembic==1.18.5
 bcrypt==5.0.0
 fastapi==0.139.2
 huggingface-hub==1.21.0

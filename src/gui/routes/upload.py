@@ -20,6 +20,7 @@ import io, csv as csv_mod
 from ...db.db import SessionLocal
 from ...db import repository
 from ...db.models import Utente, Task, Esecuzione, Risultato, ModelloLLM
+from ...db.status import JobStatus, ResultStatus
 from ...core import config
 from ... import main as hermes_main
 
@@ -140,7 +141,7 @@ async def upload_csv(
             id_utente=utente.id_utente,
             id_modello=id_modello,
             nome=f"Upload {file.filename[:50]}",
-            stato="In attesa",
+            stato=JobStatus.QUEUED.value,
             prompt=prompt,
             temperatura=temperatura,
             max_tokens=max_tokens,
@@ -149,7 +150,11 @@ async def upload_csv(
         db.flush()
 
         # Crea Esecuzione
-        esecuzione = Esecuzione(id_task=task.id_task, totale_righe=n_righe)
+        esecuzione = Esecuzione(
+            id_task=task.id_task,
+            stato=JobStatus.QUEUED.value,
+            totale_righe=n_righe,
+        )
         db.add(esecuzione)
         db.flush()
 
@@ -229,12 +234,12 @@ async def list_jobs():
             
             completate = db.query(Risultato).filter(
                 Risultato.id_esecuzione == r.id_esecuzione,
-                Risultato.stato == "Completato"
+                Risultato.stato == ResultStatus.COMPLETED.value
             ).count()
             
             errori = db.query(Risultato).filter(
                 Risultato.id_esecuzione == r.id_esecuzione,
-                Risultato.stato != "Completato"
+                Risultato.stato != ResultStatus.COMPLETED.value
             ).count()
 
             jobs.append({

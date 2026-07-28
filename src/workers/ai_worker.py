@@ -11,6 +11,7 @@ from huggingface_hub.utils import HfHubHTTPError
 from ..core import config
 from ..db.db import SessionLocal
 from ..db import repository
+from ..db.status import ResultStatus
 from .worker_base import WorkerBase, FatalWorkerError
 
 class LocalAIWorker(WorkerBase):
@@ -65,10 +66,26 @@ class LocalAIWorker(WorkerBase):
                         # Passiamo temp_db e max_tok_db presi dal database!
                         risposta = self._call_ai(client, modello, prompt_finale, temp_db, max_tok_db)
                         tempo = round(time.time() - start_time, 2)
-                        repository.save_result(db, id_esecuzione, id_file, id_riga, risposta, tempo, "Completato")
+                        repository.save_result(
+                            db,
+                            id_esecuzione,
+                            id_file,
+                            id_riga,
+                            risposta,
+                            tempo,
+                            ResultStatus.COMPLETED.value,
+                        )
                     except Exception as e:
                         config.logger.error(f"Riga {id_riga} fallita: {str(e)}")
-                        repository.save_result(db, id_esecuzione, id_file, id_riga, str(e), 0.0, "Errore")
+                        repository.save_result(
+                            db,
+                            id_esecuzione,
+                            id_file,
+                            id_riga,
+                            str(e),
+                            0.0,
+                            ResultStatus.ERROR.value,
+                        )
                 db.commit()
             except Exception as db_err:
                 db.rollback()
