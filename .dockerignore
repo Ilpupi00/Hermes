@@ -2,12 +2,14 @@
 .gitignore
 .env
 .venv
+.idea
 __pycache__
 **/__pycache__
 *.py[cod]
 .pytest_cache
 .coverage
 htmlcov
+temp_logs.txt
 
 uploads_web
 processed
@@ -15,6 +17,7 @@ failed
 interrupted
 results
 pending
+archive
 
 test
 docs

@@ -44,69 +44,52 @@ Hermes is **Process 2** in a two-process system. It shares no memory, no imports
 
 ```
 Hermes/
-├── docs/
-│   └── images/
-│       ├── hermes_logo_v3.png              # Project logo
-│       └── async_batch_processing_architecture.svg
-├── pyproject.toml
-├── requirements.txt
-├── uv.lock
-├── alembic.ini
-├── .env
-├── .python-version
-├── docker-compose.yml          # Docker Compose configuration
-├── Dockerfile                  # Docker image build file
+├── alembic.ini                    # Alembic entry configuration
+├── docker-compose.yml             # Local app and PostgreSQL services
+├── Dockerfile                     # Reproducible runtime image
+├── pyproject.toml                 # Dependency and tool configuration
+├── uv.lock                        # Reproducible uv resolution
+├── requirements-runtime.txt       # Minimal Docker runtime dependencies
+├── requirements.txt               # Export including optional extras
+├── docs/images/                   # Images referenced by this README
+├── scripts/
+│   ├── create_admin.py            # Create a local Control Room account
+│   └── smoke_upload.py            # Manual CSV upload smoke client
 ├── src/
-│    ├── __init__.py
-│    ├── main.py                 # Entry point
-│    ├── core/
-│    │   ├── __init__.py
-│    │   ├── config.py           # Environment variables
-│    │   ├── watcher.py          # Directory polling
-│    │   ├── mover.py            # Atomic rename
-│    │   └── reader.py           # Pandas chunking
-│    │
-│    ├── db/
-│    │   ├── __init__.py
-│    │   ├── db.py               # Engine and SessionMaker
-│    │   ├── models.py           # SQLAlchemy ORM classes (Tables)
-│    │   ├── status.py           # Canonical job/result states
-│    │   ├── migrations/         # Versioned Alembic schema
-│    │   └── repository.py       # Queries (CRUD)
-│    ├── gui/                    # Control Room interface
-│    │   ├── app.py              # GUI entry point (FastAPI + PyWebView)
-│    │   ├── state.py            # Global shared state (processes, ws)
-│    │   ├── pages/
-│    │   │   └── index.html      # UI Dashboard
-│    │   ├── static/
-│    │   │   ├── css/style.css   # Design system (dark mode)
-│    │   │   ├── images/
-│    │   │   │   └── hermes_logo_v3.png  # Logo served by FastAPI
-│    │   │   └── js/
-│    │   │       └── app.js      # Frontend Javascript controller
-│    │   └── routes/
-│    │       ├── __init__.py     # Router aggregator
-│    │       ├── control.py      # Engine and thread-pool control routes
-│    │       ├── dashboard.py    # Dashboard render route
-│    │       └── logs.py         # Log streaming (WS) and export (.txt)
-│    └── workers/
-│        ├── __init__.py
-│        ├── dispatcher.py       # ThreadPool management
-│        ├── worker_base.py      # Abstract baseWorker class
-│        └── ai_worker.py
-└── tests/
-    ├── __init__.py
-    ├── conftest.py              <-- File speciale di pytest per le configurazioni e i "fixture" (dati fittizi condivisi)
-    ├── api/
-    │   └── test_health.py       <-- Test per src/api/health.py
-    ├── core/
-    │   ├── test_config.py       <-- Test per src/core/config.py
-    │   └── test_reader.py       <-- Test per src/core/reader.py
-    ├── db/
-    │   └── test_repository.py   <-- Test per src/db/repository.py
-    └── workers/
-        └── test_dispatcher.py   <-- Test per src/workers/dispatcher.py        # Model logic with Circuit Breaker
+│   ├── main.py                    # Processing-engine entry point
+│   ├── api/                       # Engine health endpoint
+│   ├── core/                      # Configuration and filesystem pipeline
+│   ├── db/
+│   │   ├── migrations/            # Canonical Alembic history
+│   │   ├── db.py                  # Engine and session factory
+│   │   ├── models.py              # SQLAlchemy models
+│   │   ├── repository.py          # Database operations
+│   │   └── status.py              # Canonical states and transitions
+│   ├── gui/
+│   │   ├── pages/                 # Control Room HTML
+│   │   ├── routes/                # Control Room FastAPI routes
+│   │   └── static/                # Control Room CSS, JS and images
+│   └── workers/                   # Pools and LLM workers
+└── test/                          # Automated pytest suite
 ```
+
+The Control Room under `src/gui` is an internal technical interface. It is
+separate from the user-facing React application maintained in
+`hermes-webapp`.
+
+### Dependency files
+
+`pyproject.toml` is the source of truth for Python dependencies and optional
+capabilities. `uv.lock` pins the complete resolution used by local development.
+`requirements-runtime.txt` contains the smaller runtime installed in the Docker
+image, while `requirements.txt` is generated with:
+
+```bash
+uv export --all-extras --no-hashes --output-file requirements.txt
+```
+
+When dependencies change, update `pyproject.toml`, regenerate `uv.lock` and the
+export, and review `requirements-runtime.txt` if the Docker runtime is affected.
 
 ---
 
@@ -143,6 +126,15 @@ You can access the Control Room dashboard at [http://localhost:8000](http://loca
 Readiness can be checked at
 [http://localhost:8000/health](http://localhost:8000/health); it returns HTTP
 200 only when both the web application and PostgreSQL are reachable.
+
+For a manual upload smoke test against an already running Control Room:
+
+```bash
+uv run python scripts/smoke_upload.py path/to/input.csv --model-id 1
+```
+
+The script does not embed credentials. Configure any required Hugging Face
+token in the local `.env` before starting Hermes.
 
 On a new database, create the first Control Room administrator from a terminal:
 
@@ -221,6 +213,17 @@ Create the required folders (Hermes will also create them on startup if missing)
 ```bash
 mkdir -p uploads_web processed failed interrupted
 ```
+
+These are runtime directories and are intentionally ignored by Git:
+
+| Directory | Current role |
+| --- | --- |
+| `uploads_web` | Shared inbox watched for new CSV files |
+| `processed` | Current working/archive area; it will be split in a later phase |
+| `failed` | Files whose processing failed |
+| `interrupted` | Files deferred during shutdown or interruption |
+
+Do not place source files or permanent documentation in these directories.
 
 Apply pending database migrations:
 
