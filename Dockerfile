@@ -20,6 +20,7 @@ RUN uv pip install --system -r requirements-runtime.txt
 # Copia tutto il codice sorgente
 COPY src/ ./src/
 COPY scripts/ ./scripts/
+COPY alembic.ini .
 
 # Crea le cartelle di base per i CSV
 RUN mkdir -p /app/uploads_web /app/processed /app/failed /app/interrupted
@@ -28,4 +29,4 @@ RUN mkdir -p /app/uploads_web /app/processed /app/failed /app/interrupted
 EXPOSE 8000
 
 # Avvia l'applicazione direttamente tramite Uvicorn (Server Mode, niente finestra Desktop)
-CMD ["uvicorn", "src.gui.app:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["sh", "-c", "alembic upgrade head && exec uvicorn src.gui.app:app --host 0.0.0.0 --port 8000"]

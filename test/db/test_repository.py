@@ -6,8 +6,13 @@ Copre:
 - save_result: creazione e flush del record Risultato
 """
 import pytest
-from src.db.repository import get_execution_context, save_result
+from src.db.repository import (
+    get_execution_context,
+    save_result,
+    set_task_status_by_execution,
+)
 from src.db.models import Utente, ModelloLLM, Task, Esecuzione, Risultato
+from src.db.status import JobStatus
 
 
 # ---------------------------------------------------------------------------
@@ -175,3 +180,34 @@ class TestSaveResult:
 
         count = db_session.query(Risultato).filter_by(id_esecuzione=id_exec).count()
         assert count == 3
+
+
+class TestSetExecutionStatus:
+    def test_updates_task_and_execution(self, db_session):
+        id_exec = _create_full_context(db_session)
+
+        set_task_status_by_execution(
+            db_session, id_exec, JobStatus.RUNNING.value
+        )
+
+        execution = db_session.get(Esecuzione, id_exec)
+        task = db_session.get(Task, execution.id_task)
+        assert execution.stato == JobStatus.RUNNING.value
+        assert task.stato == JobStatus.RUNNING.value
+        assert execution.data_inizio is not None
+
+    def test_terminal_status_sets_end_time(self, db_session):
+        id_exec = _create_full_context(db_session)
+
+        set_task_status_by_execution(
+            db_session, id_exec, JobStatus.COMPLETED.value
+        )
+
+        execution = db_session.get(Esecuzione, id_exec)
+        assert execution.data_fine is not None
+
+    def test_rejects_unknown_status(self, db_session):
+        id_exec = _create_full_context(db_session)
+
+        with pytest.raises(ValueError):
+            set_task_status_by_execution(db_session, id_exec, "Sconosciuto")

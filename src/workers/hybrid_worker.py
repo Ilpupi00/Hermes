@@ -26,6 +26,7 @@ import openai
 from ..core import config
 from ..db.db import SessionLocal
 from ..db import repository
+from ..db.status import ResultStatus
 from .worker_base import WorkerBase, FatalWorkerError
 
 
@@ -176,7 +177,7 @@ class HybridWorker(WorkerBase):
                         tempo    = round(time.time() - start_time, 2)
                         repository.save_result(
                             db, id_esecuzione, id_file, id_riga,
-                            risposta, tempo, "Completato"
+                            risposta, tempo, ResultStatus.COMPLETED.value
                         )
                         db.commit()
                         completate += 1
@@ -191,7 +192,13 @@ class HybridWorker(WorkerBase):
                             f"status=ERROR reason={str(e)[:120]}"
                         )
                         repository.save_result(
-                            db, id_esecuzione, id_file, id_riga, str(e), 0.0, "Errore"
+                            db,
+                            id_esecuzione,
+                            id_file,
+                            id_riga,
+                            str(e),
+                            0.0,
+                            ResultStatus.ERROR.value,
                         )
                         db.commit()
 

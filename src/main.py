@@ -15,6 +15,7 @@ from .workers.worker_base import FatalWorkerError
 from .api.health import start_health_server
 from .db.db import SessionLocal
 from .db import repository
+from .db.status import JobStatus
 
 keep_running = True
 dispatcher = None
@@ -77,7 +78,9 @@ def _process_file_blocking(target_file):
         if job_id is not None:
             try:
                 with SessionLocal() as db:
-                    repository.set_task_status_by_execution(db, job_id, "In corso")
+                    repository.set_task_status_by_execution(
+                        db, job_id, JobStatus.RUNNING.value
+                    )
                     db.commit()
             except Exception:
                 pass
@@ -111,7 +114,9 @@ def _process_file_blocking(target_file):
             
             # Se stiamo spegnendo Hermes, è una sospensione (Rimandato), non un Fallito vero
             is_shutdown = not keep_running
-            new_status = "Rimandato" if is_shutdown else "Fallito"
+            new_status = (
+                JobStatus.DEFERRED.value if is_shutdown else JobStatus.FAILED.value
+            )
             target_dir = config.INTERRUPTED if is_shutdown else config.FAILED
             
             if job_id is not None:
@@ -131,7 +136,9 @@ def _process_file_blocking(target_file):
         if job_id is not None:
             try:
                 with SessionLocal() as db:
-                    repository.set_task_status_by_execution(db, job_id, "Completato")
+                    repository.set_task_status_by_execution(
+                        db, job_id, JobStatus.COMPLETED.value
+                    )
                     db.commit()
             except Exception:
                 pass
@@ -140,7 +147,9 @@ def _process_file_blocking(target_file):
         config.logger.error(f"file={processing_file.name} status=failed_processing error={str(e)}")
         
         is_shutdown = not keep_running
-        new_status = "Rimandato" if is_shutdown else "Fallito"
+        new_status = (
+            JobStatus.DEFERRED.value if is_shutdown else JobStatus.FAILED.value
+        )
         target_dir = config.INTERRUPTED if is_shutdown else config.FAILED
         
         if 'job_id' in locals() and job_id is not None:
@@ -159,7 +168,7 @@ def _process_file_blocking(target_file):
 def process_inbox():
     """Il Job che lo scheduler eseguirà ciclicamente."""
     target_file = get_next_file(config.INBOX)
-    
+
     if not target_file:
         return 
         
@@ -242,4 +251,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-    

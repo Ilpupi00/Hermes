@@ -1,5 +1,8 @@
+from datetime import UTC, datetime
+
 from sqlalchemy.orm import Session
 from .models import Esecuzione, Task, Utente, ModelloLLM, Risultato
+from .status import JobStatus
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Execution context (usato dal HybridWorker)
@@ -50,11 +53,22 @@ def save_result(db: Session, id_esecuzione: int, id_file: int, id_riga_input: in
     db.flush()
 
 def set_task_status_by_execution(db: Session, id_esecuzione: int, stato: str):
+    target_status = JobStatus(stato)
     esecuzione = db.query(Esecuzione).filter(Esecuzione.id_esecuzione == id_esecuzione).first()
     if esecuzione:
+        esecuzione.stato = target_status.value
+        if target_status == JobStatus.RUNNING and esecuzione.data_inizio is None:
+            esecuzione.data_inizio = datetime.now(UTC).replace(tzinfo=None)
+        if target_status in {
+            JobStatus.COMPLETED,
+            JobStatus.FAILED,
+            JobStatus.CANCELLED,
+        }:
+            esecuzione.data_fine = datetime.now(UTC).replace(tzinfo=None)
+
         task = db.query(Task).filter(Task.id_task == esecuzione.id_task).first()
         if task:
-            task.stato = stato
+            task.stato = target_status.value
             db.flush()
 
 # ─────────────────────────────────────────────────────────────────────────────
