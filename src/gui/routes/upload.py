@@ -75,9 +75,11 @@ async def upload_csv(
     # Verifica che sia CSV leggibile e conta le righe
     try:
         decoded = content.decode("utf-8-sig")
-        reader  = csv_mod.reader(io.StringIO(decoded))
-        rows    = list(reader)
-        n_righe = max(0, len(rows) - 1)  # escludi header
+        reader = csv_mod.DictReader(io.StringIO(decoded))
+        if not reader.fieldnames:
+            raise ValueError("intestazione CSV mancante")
+        rows = list(reader)
+        n_righe = len(rows)
         
         # ── Auto-tuning del chunk_size per parallelismo ottimale ──
         num_workers = config.MAX_WORKERS
@@ -136,6 +138,9 @@ async def upload_csv(
             except requests.RequestException as e:
                 config.logger.warning(f"Impossibile verificare il modello su HF: {e}")
 
+        # Registra il file e le righe prima di creare l'esecuzione.
+        file_csv = repository.create_input_file(db, file.filename, rows)
+
         # Crea Task
         task = Task(
             id_utente=utente.id_utente,
@@ -152,6 +157,7 @@ async def upload_csv(
         # Crea Esecuzione
         esecuzione = Esecuzione(
             id_task=task.id_task,
+            id_file=file_csv.id_file,
             stato=JobStatus.QUEUED.value,
             totale_righe=n_righe,
         )
@@ -159,7 +165,7 @@ async def upload_csv(
         db.flush()
 
         id_esecuzione = esecuzione.id_esecuzione
-        id_file       = 1  # primo (e unico) file di questo job
+        id_file = file_csv.id_file
 
         # ── Salva in INBOX con naming convention ─────────────────────────────
         config.init_directories()

@@ -39,6 +39,7 @@ services:
       - SECRET_KEY=${SECRET_KEY:?Set SECRET_KEY in .env}
       - ACCESS_TOKEN_EXPIRE_MINUTES=${ACCESS_TOKEN_EXPIRE_MINUTES:-10080}
       - HF_TOKEN=${HF_TOKEN:-}
+      - HF_INFERENCE_PROVIDER=${HF_INFERENCE_PROVIDER:-featherless-ai}
       # Configurazione delle cartelle per i CSV
       - HERMES_INBOX=/app/uploads_web
       - HERMES_ARCHIVE=/app/processed

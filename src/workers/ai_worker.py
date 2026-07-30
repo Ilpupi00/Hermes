@@ -47,7 +47,10 @@ class LocalAIWorker(WorkerBase):
                 raise FatalWorkerError("Token non valido o revocato.")
 
             # Inizializza client Hugging Face
-            client = InferenceClient(token=token)
+            client = InferenceClient(
+                provider=config.HF_INFERENCE_PROVIDER,
+                api_key=token,
+            )
             
             try:
                 for index, row in chunk.iterrows():

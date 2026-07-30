@@ -234,7 +234,10 @@ async def test_model(id_modello: int, params: TestModelRequest):
             token = params.hub_token or config.HF_TOKEN
             if not token:
                 return {"status": "error", "detail": "hub_token obbligatorio per tipo=hf_api (oppure configura HF_TOKEN in .env)"}
-            client   = InferenceClient(token=token)
+            client = InferenceClient(
+                provider=config.HF_INFERENCE_PROVIDER,
+                api_key=token,
+            )
             try:
                 risposta = client.text_generation(
                     params.prompt,
@@ -245,7 +248,16 @@ async def test_model(id_modello: int, params: TestModelRequest):
             except Exception as e:
                 err_str = str(e).lower()
                 if "model_not_supported" in err_str or "not supported by any provider" in err_str:
-                    return {"status": "error", "detail": "Questo modello non è supportato dall'Inference API gratuita di HuggingFace (potrebbe essere troppo grande o richiedere un piano PRO). Ti consiglio di cercare modelli più leggeri come mistralai/Mistral-7B-Instruct-v0.2 o caricare il modello in locale tramite vLLM/Ollama."}
+                    return {
+                        "status": "error",
+                        "detail": (
+                            "Questo modello non è disponibile tramite i provider "
+                            "Hugging Face abilitati per il tuo account. Abilita un "
+                            "provider compatibile nelle impostazioni Inference "
+                            "Providers, seleziona un altro modello oppure usa "
+                            "l'esecuzione locale."
+                        ),
+                    }
                 elif "conversational" in err_str or "text-generation" in err_str:
                     try:
                         resp = client.chat_completion(

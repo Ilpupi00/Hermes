@@ -96,17 +96,26 @@ def _process_file_blocking(target_file):
             chunk_futures.append(future)
         
         has_fatal_error = False
+        has_row_errors = False
         
         for future in concurrent.futures.as_completed(chunk_futures):
             try:
-                future.result() 
+                chunk_result = future.result()
+                if (
+                    isinstance(chunk_result, dict)
+                    and chunk_result.get("error_rows", 0) > 0
+                ):
+                    has_row_errors = True
             except FatalWorkerError as fe:
                 config.logger.critical(f"status=CIRCUIT_BREAKER file={processing_file.name} reason='{str(fe)}'")
                 has_fatal_error = True
                 cancel_event.set()
                 break 
             except Exception as e:
-                config.logger.error(f"Chunk fallito in modo non fatale: {str(e)}")
+                config.logger.error(f"Chunk fallito: {str(e)}")
+                has_fatal_error = True
+                cancel_event.set()
+                break
 
         if has_fatal_error:
             for f in chunk_futures:
@@ -129,6 +138,25 @@ def _process_file_blocking(target_file):
 
             move_file(processing_file, target_dir)
             return 
+
+        if has_row_errors:
+            config.logger.error(
+                f"file={processing_file.name} status=failed_with_row_errors"
+            )
+            if job_id is not None:
+                try:
+                    with SessionLocal() as db:
+                        repository.set_task_status_by_execution(
+                            db, job_id, JobStatus.FAILED.value
+                        )
+                        db.commit()
+                except Exception as e:
+                    config.logger.error(
+                        f"Impossibile aggiornare stato a {JobStatus.FAILED.value} "
+                        f"per job {job_id}: {e}"
+                    )
+            move_file(processing_file, config.FAILED)
+            return
 
         config.logger.info(f"file={processing_file.name} all_chunks={len(chunk_futures)} status=complete")
         
