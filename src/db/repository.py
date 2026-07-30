@@ -1,7 +1,16 @@
 from datetime import UTC, datetime
+import json
 
 from sqlalchemy.orm import Session
-from .models import Esecuzione, Task, Utente, ModelloLLM, Risultato
+from .models import (
+    Esecuzione,
+    FileCSV,
+    ModelloLLM,
+    RigaInput,
+    Risultato,
+    Task,
+    Utente,
+)
 from .status import JobStatus
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -17,7 +26,8 @@ def get_execution_context(db: Session, id_esecuzione: int) -> dict:
             ModelloLLM.tipo,
             ModelloLLM.endpoint_url,
             Task.temperatura,
-            Task.max_tokens
+            Task.max_tokens,
+            Esecuzione.id_file,
         )
         .select_from(Esecuzione)
         .join(Task, Esecuzione.id_task == Task.id_task)
@@ -38,7 +48,57 @@ def get_execution_context(db: Session, id_esecuzione: int) -> dict:
         "endpoint_url": result.endpoint_url,
         "temperatura":  result.temperatura if result.temperatura is not None else 0.1,
         "max_tokens":   result.max_tokens  if result.max_tokens  is not None else 500,
+        "id_file":      result.id_file,
     }
+
+
+def create_input_file(
+    db: Session,
+    nome_file: str,
+    rows: list[dict[str, str | None]],
+) -> FileCSV:
+    """Registra il CSV e le sue righe, restituendo il record del file."""
+    file_csv = FileCSV(nome_file=nome_file, numero_righe=len(rows))
+    db.add(file_csv)
+    db.flush()
+
+    db.add_all(
+        RigaInput(
+            id_file=file_csv.id_file,
+            indice_riga=index,
+            contenuto=json.dumps(row, ensure_ascii=False),
+        )
+        for index, row in enumerate(rows)
+    )
+    db.flush()
+    return file_csv
+
+
+def get_input_row_ids(
+    db: Session,
+    id_file: int,
+    row_indexes: list[int],
+) -> dict[int, int]:
+    """Restituisce la corrispondenza indice CSV → chiave della riga persistita."""
+    if not row_indexes:
+        return {}
+
+    rows = (
+        db.query(RigaInput.indice_riga, RigaInput.id_riga_input)
+        .filter(
+            RigaInput.id_file == id_file,
+            RigaInput.indice_riga.in_(row_indexes),
+        )
+        .all()
+    )
+    result = {int(row.indice_riga): int(row.id_riga_input) for row in rows}
+    missing = sorted(set(row_indexes) - result.keys())
+    if missing:
+        raise ValueError(
+            f"Righe input mancanti per file {id_file}: {missing}"
+        )
+    return result
+
 
 def save_result(db: Session, id_esecuzione: int, id_file: int, id_riga_input: int, output: str, tempo_esecuzione: float, stato: str):
     nuovo_risultato = Risultato(

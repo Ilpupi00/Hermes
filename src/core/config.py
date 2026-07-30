@@ -38,6 +38,10 @@ LOCAL_AI_BASE_URL = os.getenv("HERMES_AI_BASE_URL", "http://localhost:8000/v1")
 # HF_TOKEN è il nome canonico. HUGGING_FACE resta temporaneamente supportato
 # per non rompere le configurazioni create prima della baseline.
 HF_TOKEN = os.getenv("HF_TOKEN", os.getenv("HUGGING_FACE", "")).strip().strip('"')
+HF_INFERENCE_PROVIDER = (
+    os.getenv("HF_INFERENCE_PROVIDER", "featherless-ai").strip()
+    or "featherless-ai"
+)
 
 # PATH AGGIORNATO ALLA NUOVA STRUTTURA
 WORKER_CLASS = os.getenv("HERMES_WORKER_CLASS", "src.workers.hybrid_worker.HybridWorker")

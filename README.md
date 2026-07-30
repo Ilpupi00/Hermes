@@ -276,7 +276,8 @@ All settings are loaded from environment variables or a `.env` file in the proje
 | `DB_PASSWORD`                 | required in Docker    | PostgreSQL password                                 |
 | `SECRET_KEY`                  | required              | Random key used to sign JWT                         |
 | `ACCESS_TOKEN_EXPIRE_MINUTES` | `10080`               | JWT lifetime in minutes                             |
-| `HF_TOKEN`                    | optional              | Hugging Face token for remote/private models        |
+| `HF_TOKEN`                    | remote inference      | Token with the `Inference Providers` permission     |
+| `HF_INFERENCE_PROVIDER`       | `featherless-ai`      | Provider Hugging Face per i modelli remoti iniziali |
 | `HERMES_INBOX`                | `./uploads_web`       | Folder watched for incoming CSV files               |
 | `HERMES_ARCHIVE`              | `./processed`         | Destination for successfully processed files        |
 | `HERMES_FAILED`               | `./failed`            | Destination for files that exceeded max retries     |
@@ -290,7 +291,9 @@ All settings are loaded from environment variables or a `.env` file in the proje
 
 The complete, sanitized template is tracked in `.env.example`. The legacy
 variable `HUGGING_FACE` is temporarily accepted, but new configurations must
-use `HF_TOKEN`.
+use `HF_TOKEN`. The initial Qwen model is served through Featherless AI, so
+`HF_INFERENCE_PROVIDER=featherless-ai` selects it explicitly. `auto` remains
+available for models whose provider can be selected automatically.
 
 ---
 

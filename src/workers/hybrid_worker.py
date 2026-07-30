@@ -20,7 +20,6 @@ import requests
 import tenacity
 from tenacity import retry, stop_after_attempt, wait_exponential, before_sleep_log
 from huggingface_hub import InferenceClient
-from huggingface_hub.utils import HfHubHTTPError
 import openai
 
 from ..core import config
@@ -28,6 +27,32 @@ from ..db.db import SessionLocal
 from ..db import repository
 from ..db.status import ResultStatus
 from .worker_base import WorkerBase, FatalWorkerError
+
+
+def _is_retryable_hf_error(error: BaseException) -> bool:
+    """Ritenta solo errori HF plausibilmente transitori."""
+    response = getattr(error, "response", None)
+    status_code = getattr(response, "status_code", None)
+    if status_code is not None:
+        return status_code in {408, 429} or status_code >= 500
+
+    error_name = type(error).__name__.lower()
+    return "timeout" in error_name or "connection" in error_name
+
+
+def _raise_for_hf_configuration_error(error: Exception, model: str) -> None:
+    """Traduce gli errori HF permanenti in un errore fatale e azionabile."""
+    message = str(error).lower()
+    if (
+        "model_not_supported" in message
+        or "not supported by any provider" in message
+    ):
+        raise FatalWorkerError(
+            f"Il modello '{model}' non è disponibile tramite i provider "
+            "Hugging Face abilitati per questo account. Abilita un provider "
+            "compatibile nelle impostazioni Inference Providers oppure "
+            "seleziona un altro modello."
+        ) from error
 
 
 class HybridWorker(WorkerBase):
@@ -99,6 +124,12 @@ class HybridWorker(WorkerBase):
             prompt_base  = context["prompt"]
             temperatura  = context["temperatura"]
             max_tokens   = context["max_tokens"]
+            context_file = context["id_file"]
+
+            if context_file is None or int(context_file) != id_file:
+                raise FatalWorkerError(
+                    f"File {id_file} non associato all'esecuzione {id_esecuzione}."
+                )
 
             token_db = context.get("hub_token")
             token    = token_db if token_db else getattr(config, "HF_TOKEN", "")
@@ -121,12 +152,16 @@ class HybridWorker(WorkerBase):
 
             # 4. Inizializza client appropriato
             if tipo == "hf_api":
-                client  = InferenceClient(token=token)
+                client = InferenceClient(
+                    provider=config.HF_INFERENCE_PROVIDER,
+                    api_key=token,
+                )
                 call_fn = lambda prompt: self._call_hf_api(
                     client, modello, prompt, temperatura, max_tokens
                 )
                 config.logger.info(
-                    f"[AI] client=HuggingFaceAPI modello={modello} pronto"
+                    f"[AI] client=HuggingFaceAPI provider="
+                    f"{config.HF_INFERENCE_PROVIDER} modello={modello} pronto"
                 )
             elif tipo == "local_url":
                 if not endpoint_url:
@@ -148,6 +183,14 @@ class HybridWorker(WorkerBase):
             else:
                 raise FatalWorkerError(f"Tipo modello sconosciuto: '{tipo}'")
 
+            row_indexes = [int(index) for index in chunk.index]
+            try:
+                input_row_ids = repository.get_input_row_ids(
+                    db, id_file, row_indexes
+                )
+            except Exception as e:
+                raise FatalWorkerError(f"Errore righe input: {str(e)}")
+
             # 5. Iterazione righe del chunk
             completate = 0
             errori     = 0
@@ -162,7 +205,7 @@ class HybridWorker(WorkerBase):
                             "Elaborazione interrotta per attivazione Circuit Breaker."
                         )
 
-                    id_riga   = int(row.get("id_riga_input", index))
+                    id_riga = input_row_ids[int(index)]
                     dati_riga = row.drop("id_riga_input", errors='ignore').to_dict()
                     prompt_ok = f"{prompt_base}\n\nDati:\n{dati_riga}"
 
@@ -185,6 +228,9 @@ class HybridWorker(WorkerBase):
                             f"[AI] chunk={chunk_index} riga={id_riga} "
                             f"status=OK tempo={tempo}s tokens_out={len(risposta.split())}"
                         )
+                    except FatalWorkerError:
+                        db.rollback()
+                        raise
                     except Exception as e:
                         errori += 1
                         config.logger.error(
@@ -219,7 +265,12 @@ class HybridWorker(WorkerBase):
                     f"Impossibile salvare i risultati del chunk: {str(db_err)}"
                 )
 
-        return {"status": "ok", **metadata}
+        return {
+            "status": "ok" if errori == 0 else "error",
+            "completed_rows": completate,
+            "error_rows": errori,
+            **metadata,
+        }
 
     # ──────────────────────────────────────────────────────────────────────────
     # Validazione token HuggingFace (con cache e lock)
@@ -251,10 +302,11 @@ class HybridWorker(WorkerBase):
     # ──────────────────────────────────────────────────────────────────────────
 
     @retry(
-        retry=tenacity.retry_if_exception_type(HfHubHTTPError),
+        retry=tenacity.retry_if_exception(_is_retryable_hf_error),
         wait=wait_exponential(multiplier=1, min=2, max=10),
         stop=stop_after_attempt(config.MAX_RETRIES),
         before_sleep=before_sleep_log(config.logger, logging.WARNING),
+        reraise=True,
     )
     def _call_hf_api(
         self,
@@ -273,15 +325,20 @@ class HybridWorker(WorkerBase):
                 temperature=temperature,
             )
         except Exception as e:
+            _raise_for_hf_configuration_error(e, model)
             if "conversational" in str(e).lower() or "text-generation" in str(e).lower():
-                response = client.chat_completion(
-                    messages=[{"role": "user", "content": prompt}],
-                    model=model,
-                    max_tokens=max_tokens,
-                    temperature=temperature,
-                )
-                return response.choices[0].message.content or ""
-            raise e
+                try:
+                    response = client.chat_completion(
+                        messages=[{"role": "user", "content": prompt}],
+                        model=model,
+                        max_tokens=max_tokens,
+                        temperature=temperature,
+                    )
+                    return response.choices[0].message.content or ""
+                except Exception as chat_error:
+                    _raise_for_hf_configuration_error(chat_error, model)
+                    raise
+            raise
 
     # ──────────────────────────────────────────────────────────────────────────
     # Strategia 2: Server locale OpenAI-compatible (vLLM / Ollama / LM Studio)
