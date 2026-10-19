@@ -8,6 +8,7 @@ Copre:
 import pytest
 from src.db.repository import (
     create_input_file,
+    create_prompt_mappings,
     get_execution_context,
     get_input_row_ids,
     save_result,
@@ -16,6 +17,7 @@ from src.db.repository import (
 from src.db.models import (
     Esecuzione,
     FileCSV,
+    Mapping,
     ModelloLLM,
     RigaInput,
     Risultato,
@@ -48,12 +50,13 @@ def _create_full_context(session, *, temperatura=0.7, max_tokens=200):
         id_utente=utente.id_utente,
         id_modello=modello.id_modello,
         nome="TestTask",
-        prompt="Analizza i dati seguenti:",
+        prompt="Analizza {testo}",
         temperatura=temperatura,
         max_tokens=max_tokens,
     )
     session.add(task)
     session.flush()
+    create_prompt_mappings(session, task.id_task, {"testo": "testo"})
 
     file_csv = create_input_file(
         session,
@@ -90,7 +93,8 @@ class TestGetExecutionContext:
         ctx = get_execution_context(db_session, id_exec)
 
         assert ctx["hub_token"] == "hf_test_token"
-        assert ctx["prompt"] == "Analizza i dati seguenti:"
+        assert ctx["prompt"] == "Analizza {testo}"
+        assert ctx["prompt_mapping"] == {"testo": "testo"}
         assert ctx["nome_modello"] == "mistral-7b"
         assert ctx["temperatura"] == pytest.approx(0.3)
         assert ctx["max_tokens"] == 512
@@ -131,6 +135,20 @@ class TestGetExecutionContext:
 # ---------------------------------------------------------------------------
 
 class TestInputRows:
+    def test_create_prompt_mappings_persists_task_mapping(self, db_session):
+        id_exec = _create_full_context(db_session)
+        execution = db_session.get(Esecuzione, id_exec)
+
+        mappings = (
+            db_session.query(Mapping)
+            .filter(Mapping.id_task == execution.id_task)
+            .all()
+        )
+
+        assert len(mappings) == 1
+        assert mappings[0].placeholder_prompt == "testo"
+        assert mappings[0].colonna_csv == "testo"
+
     def test_create_input_file_persists_rows(self, db_session):
         file_csv = create_input_file(
             db_session,

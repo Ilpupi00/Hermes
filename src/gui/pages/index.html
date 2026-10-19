@@ -346,8 +346,9 @@
                             <div class="form-group">
                                 <label>Prompt di sistema</label>
                                 <textarea id="upload-prompt" rows="4"
-                                    placeholder="Esempio: Analizza il sentiment del testo nelle colonne sottostanti e rispondi solo con: Positivo, Negativo o Neutro."
+                                    placeholder="Esempio: Classifica il sentiment di {review}. Usa {{ e }} per graffe letterali."
                                     style="width:100%;resize:vertical;"></textarea>
+                                <small class="form-hint">I placeholder devono corrispondere alle intestazioni del CSV, per esempio {review}.</small>
                             </div>
 
                             <!-- Parametri AI -->
