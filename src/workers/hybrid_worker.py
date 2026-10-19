@@ -23,6 +23,7 @@ from huggingface_hub import InferenceClient
 import openai
 
 from ..core import config
+from ..core.prompt_template import PromptTemplateError, render_prompt
 from ..db.db import SessionLocal
 from ..db import repository
 from ..db.status import ResultStatus
@@ -136,6 +137,7 @@ class HybridWorker(WorkerBase):
             endpoint_url = context["endpoint_url"]
             modello      = context["nome_modello"]
             prompt_base  = context["prompt"]
+            prompt_mapping = context.get("prompt_mapping", {})
             temperatura  = context["temperatura"]
             max_tokens   = context["max_tokens"]
             context_file = context["id_file"]
@@ -221,7 +223,22 @@ class HybridWorker(WorkerBase):
 
                     id_riga = input_row_ids[int(index)]
                     dati_riga = row.drop("id_riga_input", errors='ignore').to_dict()
-                    prompt_ok = f"{prompt_base}\n\nDati:\n{dati_riga}"
+                    try:
+                        rendered_prompt = render_prompt(
+                            prompt_base,
+                            dati_riga,
+                            prompt_mapping,
+                        )
+                    except PromptTemplateError as error:
+                        raise FatalWorkerError(
+                            f"Prompt parametrico non applicabile: {error}"
+                        ) from error
+
+                    prompt_ok = (
+                        rendered_prompt
+                        if prompt_mapping
+                        else f"{rendered_prompt}\n\nDati:\n{dati_riga}"
+                    )
 
                     config.logger.info(
                         f"[AI] chunk={chunk_index} riga={id_riga} "

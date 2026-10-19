@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 from .models import (
     Esecuzione,
     FileCSV,
+    Mapping,
     ModelloLLM,
     RigaInput,
     Risultato,
@@ -27,6 +28,7 @@ def get_execution_context(db: Session, id_esecuzione: int) -> dict:
             ModelloLLM.endpoint_url,
             Task.temperatura,
             Task.max_tokens,
+            Esecuzione.id_task,
             Esecuzione.id_file,
         )
         .select_from(Esecuzione)
@@ -40,6 +42,16 @@ def get_execution_context(db: Session, id_esecuzione: int) -> dict:
     if not result:
         raise ValueError(f"Esecuzione {id_esecuzione} non trovata.")
 
+    prompt_mapping = {
+        row.placeholder_prompt: row.colonna_csv
+        for row in (
+            db.query(Mapping)
+            .filter(Mapping.id_task == result.id_task)
+            .order_by(Mapping.id_mapping)
+            .all()
+        )
+    }
+
     return {
         "hub_token":    result.hub_token,
         "prompt":       result.prompt,
@@ -48,8 +60,28 @@ def get_execution_context(db: Session, id_esecuzione: int) -> dict:
         "endpoint_url": result.endpoint_url,
         "temperatura":  result.temperatura if result.temperatura is not None else 0.1,
         "max_tokens":   result.max_tokens  if result.max_tokens  is not None else 500,
+        "prompt_mapping": prompt_mapping,
         "id_file":      result.id_file,
     }
+
+
+def create_prompt_mappings(
+    db: Session,
+    id_task: int,
+    placeholder_mapping: dict[str, str],
+) -> list[Mapping]:
+    """Persiste il mapping placeholder → colonna CSV associato al task."""
+    mappings = [
+        Mapping(
+            id_task=id_task,
+            placeholder_prompt=placeholder,
+            colonna_csv=column,
+        )
+        for placeholder, column in placeholder_mapping.items()
+    ]
+    db.add_all(mappings)
+    db.flush()
+    return mappings
 
 
 def create_input_file(

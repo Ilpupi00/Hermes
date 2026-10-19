@@ -22,6 +22,7 @@ from ...db import repository
 from ...db.models import Utente, Task, Esecuzione, Risultato, ModelloLLM
 from ...db.status import JobStatus, ResultStatus
 from ...core import config
+from ...core.prompt_template import PromptTemplateError, validate_prompt_data
 from ... import main as hermes_main
 
 router = APIRouter(prefix="/api")
@@ -80,6 +81,12 @@ async def upload_csv(
             raise ValueError("intestazione CSV mancante")
         rows = list(reader)
         n_righe = len(rows)
+
+        prompt_mapping = validate_prompt_data(
+            prompt,
+            reader.fieldnames,
+            rows,
+        )
         
         # ── Auto-tuning del chunk_size per parallelismo ottimale ──
         num_workers = config.MAX_WORKERS
@@ -89,6 +96,8 @@ async def upload_csv(
                 config.logger.info(f"Auto-tuning chunk_size da {chunk_size} a {optimal_chunk} per massimizzare parallelismo (righe={n_righe}, workers={num_workers})")
                 chunk_size = optimal_chunk
 
+    except PromptTemplateError as e:
+        raise HTTPException(status_code=422, detail=str(e))
     except Exception as e:
         raise HTTPException(
             status_code=422,
@@ -153,6 +162,12 @@ async def upload_csv(
         )
         db.add(task)
         db.flush()
+
+        repository.create_prompt_mappings(
+            db,
+            task.id_task,
+            prompt_mapping,
+        )
 
         # Crea Esecuzione
         esecuzione = Esecuzione(

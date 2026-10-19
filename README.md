@@ -136,6 +136,31 @@ uv run python scripts/smoke_upload.py path/to/input.csv --model-id 1
 The script does not embed credentials. Configure any required Hugging Face
 token in the local `.env` before starting Hermes.
 
+### Parameterized prompts
+
+Prompt placeholders use the corresponding CSV header name:
+
+```text
+Classifica il sentiment di {review} pubblicata il {date}.
+```
+
+At upload time Hermes validates the template syntax, required headers and all
+values used by placeholders. A job is rejected before entering the inbox when
+a required column is absent or a referenced value is empty. The initial
+mapping is persisted per task as an identity mapping, for example
+`review -> review`, so it can later evolve independently from the prompt.
+
+Use doubled braces for literal JSON or other literal braces:
+
+```text
+Rispondi nel formato {{"sentiment": "Positivo|Negativo|Neutro"}}.
+```
+
+Only simple placeholder names are supported. Attribute access, indexes,
+conversions and format specifications are rejected. Prompts without
+placeholders retain the legacy behavior and receive the complete row data as
+an appended dictionary.
+
 On a new database, create the first Control Room administrator from a terminal:
 
 ```bash

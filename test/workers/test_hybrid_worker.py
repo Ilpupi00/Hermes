@@ -46,6 +46,7 @@ def good_context_hf():
     return {
         "hub_token":    "hf_abc123",
         "prompt":       "Analizza: {testo}",
+        "prompt_mapping": {"testo": "testo"},
         "nome_modello": "mistralai/Mistral-7B-Instruct-v0.3",
         "tipo":         "hf_api",
         "endpoint_url": None,
@@ -60,6 +61,7 @@ def good_context_local():
     return {
         "hub_token":    None,
         "prompt":       "Analizza: {testo}",
+        "prompt_mapping": {"testo": "testo"},
         "nome_modello": "llama3",
         "tipo":         "local_url",
         "endpoint_url": "http://localhost:11434/v1",
@@ -300,6 +302,8 @@ class TestProcessSuccess:
         assert result["completed_rows"] == 2
         assert result["error_rows"] == 0
         assert mock_call.call_count == len(fake_chunk)
+        assert mock_call.call_args_list[0].args[2] == "Analizza: ciao"
+        assert mock_call.call_args_list[1].args[2] == "Analizza: mondo"
 
     def test_local_url_full_flow(self, worker, fake_chunk, good_context_local):
         mock_ctx, mock_db = self._mock_session()
@@ -320,6 +324,37 @@ class TestProcessSuccess:
         assert result["completed_rows"] == 2
         assert result["error_rows"] == 0
         assert mock_call.call_count == len(fake_chunk)
+        assert mock_call.call_args_list[0].args[2] == "Analizza: ciao"
+
+    def test_plain_prompt_preserves_legacy_row_context(
+        self, worker, fake_chunk, good_context_local
+    ):
+        context = {
+            **good_context_local,
+            "prompt": "Analizza i dati.",
+            "prompt_mapping": {},
+        }
+        mock_ctx, mock_db = self._mock_session()
+        with patch(
+            "src.workers.hybrid_worker.repository.get_execution_context",
+            return_value=context,
+        ), patch(
+            "src.workers.hybrid_worker.SessionLocal", return_value=mock_ctx
+        ), patch(
+            "src.workers.hybrid_worker.repository.get_input_row_ids",
+            return_value={0: 1, 1: 2},
+        ), patch.object(
+            worker, "_call_local_api", return_value="Risposta locale"
+        ) as mock_call, patch(
+            "src.workers.hybrid_worker.openai.OpenAI"
+        ), patch(
+            "src.workers.hybrid_worker.repository.save_result"
+        ):
+            worker.process(fake_chunk, {"filename": "exec_1_file_2.csv"})
+
+        first_prompt = mock_call.call_args_list[0].args[2]
+        assert first_prompt.startswith("Analizza i dati.\n\nDati:\n")
+        assert "'testo': 'ciao'" in first_prompt
 
     def test_row_error_saves_errore_stato(self, worker, fake_chunk, good_context_hf):
         """Se una riga fallisce, deve salvare stato='Errore' senza interrompere il processo."""

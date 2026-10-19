@@ -9,6 +9,7 @@ from huggingface_hub import InferenceClient
 from huggingface_hub.utils import HfHubHTTPError
 
 from ..core import config
+from ..core.prompt_template import PromptTemplateError, render_prompt
 from ..db.db import SessionLocal
 from ..db import repository
 from ..db.status import ResultStatus
@@ -37,6 +38,7 @@ class LocalAIWorker(WorkerBase):
             token = context['hub_token']
             modello = context['nome_modello']
             prompt_base = context['prompt']
+            prompt_mapping = context.get('prompt_mapping', {})
             
             # --- PARAMETRI DINAMICI DAL DATABASE ---
             temp_db = context['temperatura']
@@ -62,7 +64,22 @@ class LocalAIWorker(WorkerBase):
 
                     id_riga = row['id_riga_input']
                     dati_riga = row.drop('id_riga_input').to_dict()
-                    prompt_finale = f"{prompt_base}\n\nDati:\n{dati_riga}"
+                    try:
+                        rendered_prompt = render_prompt(
+                            prompt_base,
+                            dati_riga,
+                            prompt_mapping,
+                        )
+                    except PromptTemplateError as error:
+                        raise FatalWorkerError(
+                            f"Prompt parametrico non applicabile: {error}"
+                        ) from error
+
+                    prompt_finale = (
+                        rendered_prompt
+                        if prompt_mapping
+                        else f"{rendered_prompt}\n\nDati:\n{dati_riga}"
+                    )
                     
                     start_time = time.time()
                     try:
