@@ -239,12 +239,13 @@ async def test_model(id_modello: int, params: TestModelRequest):
                 api_key=token,
             )
             try:
-                risposta = client.text_generation(
-                    params.prompt,
+                response = client.chat.completions.create(
                     model=nome_modello,
-                    max_new_tokens=params.max_tokens,
+                    messages=[{"role": "user", "content": params.prompt}],
+                    max_tokens=params.max_tokens,
                     temperature=0.1,
                 )
+                risposta = response.choices[0].message.content or ""
             except Exception as e:
                 err_str = str(e).lower()
                 if "model_not_supported" in err_str or "not supported by any provider" in err_str:
@@ -258,17 +259,6 @@ async def test_model(id_modello: int, params: TestModelRequest):
                             "l'esecuzione locale."
                         ),
                     }
-                elif "conversational" in err_str or "text-generation" in err_str:
-                    try:
-                        resp = client.chat_completion(
-                            messages=[{"role": "user", "content": params.prompt}],
-                            model=nome_modello,
-                            max_tokens=params.max_tokens,
-                            temperature=0.1,
-                        )
-                        risposta = resp.choices[0].message.content or ""
-                    except Exception as chat_e:
-                        return {"status": "error", "detail": str(chat_e)}
                 else:
                     return {"status": "error", "detail": str(e)}
             

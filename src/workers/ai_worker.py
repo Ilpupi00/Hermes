@@ -145,11 +145,11 @@ class LocalAIWorker(WorkerBase):
         before_sleep=before_sleep_log(config.logger, logging.WARNING)
     )
     def _call_ai(self, client: InferenceClient, model: str, prompt: str, temperature: float, max_tokens: int) -> str:
-        """Chiama il modello tramite Hugging Face usando parametri interamente dinamici."""
-        response = client.text_generation(
-            prompt,
+        """Chiama il modello remoto tramite Hugging Face Chat Completion."""
+        response = client.chat.completions.create(
             model=model,
-            max_new_tokens=max_tokens,      # <-- Ora è dinamico
-            temperature=temperature         # <-- Ora è dinamico
+            messages=[{"role": "user", "content": prompt}],
+            max_tokens=max_tokens,
+            temperature=temperature,
         )
-        return response
+        return response.choices[0].message.content or ""

@@ -3,7 +3,7 @@ Test unitari per src/workers/hybrid_worker.py
 
 Copre:
 - _is_token_valid: token valido, non valido, cache
-- _call_hf_api: chiamata a InferenceClient.text_generation
+- _call_hf_api: chiamata a InferenceClient.chat.completions.create
 - _call_local_api: chiamata a openai.OpenAI.chat.completions.create
 - process:
     - flusso completo hf_api (mock)
@@ -112,9 +112,11 @@ class TestIsTokenValid:
 # ─────────────────────────────────────────────────────────────────────────────
 
 class TestCallHfApi:
-    def test_returns_text_generation_result(self, worker):
+    def test_returns_chat_completion_content(self, worker):
         mock_client = MagicMock()
-        mock_client.text_generation.return_value = "Risposta AI"
+        mock_client.chat.completions.create.return_value = MagicMock(
+            choices=[MagicMock(message=MagicMock(content="Risposta AI"))]
+        )
         result = worker._call_hf_api(
             client=mock_client,
             model="mistralai/Mistral-7B",
@@ -126,7 +128,9 @@ class TestCallHfApi:
 
     def test_passes_correct_parameters(self, worker):
         mock_client = MagicMock()
-        mock_client.text_generation.return_value = "ok"
+        mock_client.chat.completions.create.return_value = MagicMock(
+            choices=[MagicMock(message=MagicMock(content="ok"))]
+        )
         worker._call_hf_api(
             client=mock_client,
             model="mistral",
@@ -134,16 +138,17 @@ class TestCallHfApi:
             temperature=0.7,
             max_tokens=200,
         )
-        mock_client.text_generation.assert_called_once_with(
-            "test",
+        mock_client.chat.completions.create.assert_called_once_with(
             model="mistral",
-            max_new_tokens=200,
+            messages=[{"role": "user", "content": "test"}],
+            max_tokens=200,
             temperature=0.7,
         )
+        mock_client.text_generation.assert_not_called()
 
     def test_unsupported_model_is_fatal_without_retry(self, worker):
         mock_client = MagicMock()
-        mock_client.text_generation.side_effect = Exception(
+        mock_client.chat.completions.create.side_effect = Exception(
             "model_not_supported: not supported by any provider you have enabled"
         )
 
@@ -156,7 +161,7 @@ class TestCallHfApi:
                 max_tokens=50,
             )
 
-        mock_client.text_generation.assert_called_once()
+        mock_client.chat.completions.create.assert_called_once()
 
     def test_exhausted_credits_are_fatal_without_retry(self, worker):
         mock_client = MagicMock()
@@ -164,7 +169,7 @@ class TestCallHfApi:
             "402 Payment Required: You have no remaining credits."
         )
         billing_error.response = MagicMock(status_code=402)
-        mock_client.text_generation.side_effect = billing_error
+        mock_client.chat.completions.create.side_effect = billing_error
 
         with pytest.raises(FatalWorkerError, match="Credito Hugging Face"):
             worker._call_hf_api(
@@ -175,7 +180,7 @@ class TestCallHfApi:
                 max_tokens=50,
             )
 
-        mock_client.text_generation.assert_called_once()
+        mock_client.chat.completions.create.assert_called_once()
 
 
 # ─────────────────────────────────────────────────────────────────────────────
