@@ -40,9 +40,23 @@ def _is_retryable_hf_error(error: BaseException) -> bool:
     return "timeout" in error_name or "connection" in error_name
 
 
-def _raise_for_hf_configuration_error(error: Exception, model: str) -> None:
-    """Traduce gli errori HF permanenti in un errore fatale e azionabile."""
+def _raise_for_fatal_hf_error(error: Exception, model: str) -> None:
+    """Traduce gli errori HF permanenti in errori fatali e azionabili."""
+    response = getattr(error, "response", None)
+    status_code = getattr(response, "status_code", None)
     message = str(error).lower()
+
+    if (
+        status_code == 402
+        or "402 payment required" in message
+        or "no remaining credits" in message
+    ):
+        raise FatalWorkerError(
+            "Credito Hugging Face esaurito. Acquista crediti prepagati o "
+            "configura una modalità di fatturazione valida prima di "
+            "riavviare il job."
+        ) from error
+
     if (
         "model_not_supported" in message
         or "not supported by any provider" in message
@@ -325,7 +339,7 @@ class HybridWorker(WorkerBase):
                 temperature=temperature,
             )
         except Exception as e:
-            _raise_for_hf_configuration_error(e, model)
+            _raise_for_fatal_hf_error(e, model)
             if "conversational" in str(e).lower() or "text-generation" in str(e).lower():
                 try:
                     response = client.chat_completion(
@@ -336,7 +350,7 @@ class HybridWorker(WorkerBase):
                     )
                     return response.choices[0].message.content or ""
                 except Exception as chat_error:
-                    _raise_for_hf_configuration_error(chat_error, model)
+                    _raise_for_fatal_hf_error(chat_error, model)
                     raise
             raise
 
