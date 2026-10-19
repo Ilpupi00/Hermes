@@ -347,28 +347,17 @@ class HybridWorker(WorkerBase):
         temperature: float,
         max_tokens: int,
     ) -> str:
-        """Chiamata al modello tramite HuggingFace Inference API."""
+        """Chiama un modello Instruct remoto tramite Hugging Face Chat Completion."""
         try:
-            return client.text_generation(
-                prompt,
+            response = client.chat.completions.create(
                 model=model,
-                max_new_tokens=max_tokens,
+                messages=[{"role": "user", "content": prompt}],
+                max_tokens=max_tokens,
                 temperature=temperature,
             )
+            return response.choices[0].message.content or ""
         except Exception as e:
             _raise_for_fatal_hf_error(e, model)
-            if "conversational" in str(e).lower() or "text-generation" in str(e).lower():
-                try:
-                    response = client.chat_completion(
-                        messages=[{"role": "user", "content": prompt}],
-                        model=model,
-                        max_tokens=max_tokens,
-                        temperature=temperature,
-                    )
-                    return response.choices[0].message.content or ""
-                except Exception as chat_error:
-                    _raise_for_fatal_hf_error(chat_error, model)
-                    raise
             raise
 
     # ──────────────────────────────────────────────────────────────────────────

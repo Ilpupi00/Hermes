@@ -266,7 +266,9 @@ class TestTestModel:
         mock_ctx.__enter__ = MagicMock(return_value=MagicMock())
         mock_ctx.__exit__  = MagicMock(return_value=False)
         mock_client = MagicMock()
-        mock_client.text_generation.return_value = "Ciao!"
+        mock_client.chat.completions.create.return_value = MagicMock(
+            choices=[MagicMock(message=MagicMock(content="Ciao!"))]
+        )
 
         with patch("src.gui.routes.models.repository.get_model_by_id", return_value=m), \
              patch("src.gui.routes.models.SessionLocal", return_value=mock_ctx), \
@@ -274,6 +276,13 @@ class TestTestModel:
             r = client.post("/api/models/1/test", json={"hub_token": "hf_abc", "prompt": "test"})
         assert r.json()["status"] == "ok"
         assert "Ciao!" in r.json()["risposta"]
+        mock_client.chat.completions.create.assert_called_once_with(
+            model="mistral",
+            messages=[{"role": "user", "content": "test"}],
+            max_tokens=50,
+            temperature=0.1,
+        )
+        mock_client.text_generation.assert_not_called()
 
     def test_local_url_success(self, client):
         m = _make_modello(2, "llama3", "local_url", "http://localhost:11434/v1")
