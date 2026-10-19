@@ -156,6 +156,25 @@ class TestCallHfApi:
 
         mock_client.text_generation.assert_called_once()
 
+    def test_exhausted_credits_are_fatal_without_retry(self, worker):
+        mock_client = MagicMock()
+        billing_error = Exception(
+            "402 Payment Required: You have no remaining credits."
+        )
+        billing_error.response = MagicMock(status_code=402)
+        mock_client.text_generation.side_effect = billing_error
+
+        with pytest.raises(FatalWorkerError, match="Credito Hugging Face"):
+            worker._call_hf_api(
+                client=mock_client,
+                model="Qwen/Qwen2.5-0.5B-Instruct",
+                prompt="Ciao",
+                temperature=0.1,
+                max_tokens=50,
+            )
+
+        mock_client.text_generation.assert_called_once()
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Test: _call_local_api
