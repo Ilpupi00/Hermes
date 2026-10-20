@@ -143,7 +143,7 @@ class TestSubmitChunk:
     def test_submit_to_default_pool(self, dispatcher):
         """submit_chunk deve ritornare un Future."""
         chunk = pd.DataFrame({"id_riga_input": [1], "val": ["x"]})
-        metadata = {"filename": "exec_1_file_1.csv", "chunk_index": 0}
+        metadata = {"filename": "job_1_file_1.csv", "chunk_index": 0}
 
         future = dispatcher.submit_chunk(chunk, metadata, pool_name="default")
 
@@ -152,7 +152,7 @@ class TestSubmitChunk:
     def test_submit_fallback_to_existing_pool(self, dispatcher):
         """Se il pool richiesto non esiste, il chunk va al primo pool disponibile."""
         chunk = pd.DataFrame({"id_riga_input": [1]})
-        metadata = {"filename": "exec_1_file_1.csv", "chunk_index": 0}
+        metadata = {"filename": "job_1_file_1.csv", "chunk_index": 0}
 
         # "nonexistent" non c'è → fallback su "default"
         future = dispatcher.submit_chunk(chunk, metadata, pool_name="nonexistent")

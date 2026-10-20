@@ -41,10 +41,7 @@ services:
       - HF_TOKEN=${HF_TOKEN:-}
       - HF_INFERENCE_PROVIDER=${HF_INFERENCE_PROVIDER:-featherless-ai}
       # Configurazione delle cartelle per i CSV
-      - HERMES_INBOX=/app/uploads_web
-      - HERMES_ARCHIVE=/app/processed
-      - HERMES_FAILED=/app/failed
-      - HERMES_INTERRUPTED=/app/interrupted
+      - HERMES_DATA_ROOT=/app/data
       - HERMES_POLL_INTERVAL=${HERMES_POLL_INTERVAL:-60}
       - HERMES_CHUNK_SIZE=${HERMES_CHUNK_SIZE:-1000}
       - HERMES_MAX_WORKERS=${HERMES_MAX_WORKERS:-4}
@@ -52,12 +49,9 @@ services:
       - HERMES_WORKER_CLASS=${HERMES_WORKER_CLASS:-src.workers.hybrid_worker.HybridWorker}
       - HERMES_AI_BASE_URL=${HERMES_AI_BASE_URL:-http://localhost:8000/v1}
     volumes:
-      # Sincronizza le cartelle dal tuo PC al container
-      # In questo modo, trascinando un file nel tuo PC, il container lo elabora!
-      - ./uploads_web:/app/uploads_web
-      - ./processed:/app/processed
-      - ./failed:/app/failed
-      - ./interrupted:/app/interrupted
+      # Un solo mount garantisce rename atomici fra le sottocartelle e può
+      # essere condiviso con hermes-webapp tramite lo stesso path host.
+      - ${HERMES_DATA_ROOT:-./data}:/app/data
       - ./src:/app/src
     healthcheck:
       test:

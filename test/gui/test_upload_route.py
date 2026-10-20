@@ -28,6 +28,7 @@ def test_upload_persists_file_rows_and_execution_link(db_session, tmp_path):
     session_context.__exit__ = MagicMock(return_value=False)
 
     inbox = tmp_path / "inbox"
+    processing = tmp_path / "processing"
     archive = tmp_path / "processed"
     failed = tmp_path / "failed"
     interrupted = tmp_path / "interrupted"
@@ -38,6 +39,7 @@ def test_upload_persists_file_rows_and_execution_link(db_session, tmp_path):
             return_value=session_context,
         ),
         patch("src.gui.routes.upload.config.INBOX", inbox),
+        patch("src.gui.routes.upload.config.PROCESSING", processing),
         patch("src.gui.routes.upload.config.ARCHIVE", archive),
         patch("src.gui.routes.upload.config.FAILED", failed),
         patch("src.gui.routes.upload.config.INTERRUPTED", interrupted),
@@ -87,6 +89,7 @@ def test_upload_persists_file_rows_and_execution_link(db_session, tmp_path):
     assert mappings[0].placeholder_prompt == "review"
     assert mappings[0].colonna_csv == "review"
     assert (inbox / payload["filename"]).read_bytes().startswith(b"id,review")
+    assert not list(inbox.glob("*.part"))
 
 
 @pytest.mark.parametrize(

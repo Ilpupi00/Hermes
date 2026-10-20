@@ -12,11 +12,13 @@ Hermes is an **independent background process** that watches a shared inbox fold
 
 The `v0.1.0` baseline has been verified from a clean clone with PostgreSQL,
 Alembic, Hugging Face Chat Completion and parameterized CSV prompts. The
-current automated suite contains 245 tests with 74% overall coverage.
+The `v0.1.0` suite contained 245 tests with 74% overall coverage. The current
+filesystem-contract branch contains 254 tests.
 
 ```
-./uploads_web  ──►  Hermes  ──►  ThreadPoolExecutor  ──►  Generative AI API
-  (inbox)           (loop)         (N workers)             (per-row calls)
+INBOX ──► processing ──► ThreadPoolExecutor ──► Generative AI API
+                            (N workers)             (per-row calls)
+             └──────────► processed / failed / interrupted
 ```
 
 ---
@@ -129,7 +131,7 @@ Never commit `.env` or expose its values in screenshots, logs or issues.
 ### 2. Start the Docker baseline
 
 ```bash
-mkdir -p uploads_web processed failed interrupted
+mkdir -p data/uploads_web data/processing data/processed data/failed data/interrupted
 docker compose up -d --build
 docker compose ps
 ```
@@ -257,7 +259,7 @@ git clone https://github.com/Ilpupi00/Hermes.git
 cd Hermes
 cp .env.example .env
 uv sync --extra dev
-mkdir -p uploads_web processed failed interrupted
+mkdir -p data/uploads_web data/processing data/processed data/failed data/interrupted
 docker compose up -d db
 uv run alembic upgrade head
 uv run python scripts/create_admin.py <username>
@@ -292,12 +294,15 @@ python -m pip install --upgrade pip
 python -m pip install -e ".[dev]"
 ```
 
-Runtime directories are intentionally ignored by Git:
+Runtime directories are children of `HERMES_DATA_ROOT` and are intentionally
+ignored by Git. Keeping a single root guarantees atomic moves and lets the
+future webapp mount the same data area:
 
 | Directory | Current role |
 | --- | --- |
-| `uploads_web` | Shared inbox watched for new CSV files |
-| `processed` | Current working/archive area; it will be split in a later phase |
+| `uploads_web` | Shared inbox containing only complete, atomically published jobs |
+| `processing` | Files claimed and currently owned by Hermes |
+| `processed` | Immutable holding area for successfully completed input files |
 | `failed` | Files whose processing failed |
 | `interrupted` | Files deferred during shutdown or interruption |
 
@@ -328,10 +333,7 @@ All settings are loaded from environment variables or a `.env` file in the proje
 | `ACCESS_TOKEN_EXPIRE_MINUTES` | `10080`               | JWT lifetime in minutes                             |
 | `HF_TOKEN`                    | remote inference      | Token with the `Inference Providers` permission     |
 | `HF_INFERENCE_PROVIDER`       | `featherless-ai`      | Provider Hugging Face per i modelli remoti iniziali |
-| `HERMES_INBOX`                | `./uploads_web`       | Folder watched for incoming CSV files               |
-| `HERMES_ARCHIVE`              | `./processed`         | Current working area and successful-file holding     |
-| `HERMES_FAILED`               | `./failed`            | Destination for files that exceeded max retries     |
-| `HERMES_INTERRUPTED`          | `./interrupted`       | Destination for interrupted files                   |
+| `HERMES_DATA_ROOT`            | `./data`              | Shared root containing all CSV lifecycle folders     |
 | `HERMES_POLL_INTERVAL`        | `60`                  | Seconds between each scan of the inbox              |
 | `HERMES_CHUNK_SIZE`           | `1000`                | Number of rows per chunk (Pandas chunksize)         |
 | `HERMES_MAX_WORKERS`          | `4`                   | Max parallel threads in the ThreadPoolExecutor      |
@@ -405,28 +407,28 @@ STEP 1 — Poll INBOX
   └─ Files found?     →  pick oldest (FIFO)    →  STEP 2
 
 STEP 2 — Claim File
-  └─ shutil.move(INBOX/file.csv, PROCESSED/file.csv)
+  └─ move(INBOX/file.csv, PROCESSING/file.csv)
   └─ Move failed?     →  log + skip            →  back to STEP 1
 
 STEP 3 — Chunked Read
-  └─ pd.read_csv(PROCESSED/file.csv, chunksize=CHUNK_SIZE)
+  └─ pd.read_csv(PROCESSING/file.csv, chunksize=CHUNK_SIZE)
   └─ Parse error?     →  move to FAILED        →  back to STEP 1
 
 STEP 4 — Dispatch
   └─ For each chunk:
        executor.submit(worker.process, chunk, metadata)  [non-blocking]
   └─ Wait for chunk results
-  └─ Success       → keep file in PROCESSED + mark job completed
+  └─ Success       → move file to PROCESSED + mark job completed
   └─ Row/fatal error → move file to FAILED + mark job failed
   └─ Shutdown interruption → move file to INTERRUPTED
 ```
 
-`processed` currently acts as both the working area and successful-file
-archive. On engine startup, recovery moves CSV files found there back to the
-inbox. Until the planned `processing`/`processed` split is implemented, do not
-use this behavior as an idempotent production recovery mechanism; preserve or
-move completed outputs deliberately before restarting the engine. Interrupted
-and cancellation behavior will be hardened in the filesystem-contract phase.
+Upstream producers must publish files as
+`job_{id_esecuzione}_file_{id_file}.csv`. They must first write a temporary
+`.part` file, commit the related PostgreSQL records, and only then atomically
+rename it to `.csv`. Hermes ignores temporary files. On startup it requeues
+only files left in `processing` or `interrupted`; completed files in
+`processed` are never replayed.
 
 ---
 
@@ -435,13 +437,11 @@ and cancellation behavior will be hardened in the filesystem-contract phase.
 Hermes uses Python's standard `logging` library with a structured format:
 
 ```
-[HERMES] file=sales_jan.csv status=detected
-[HERMES] file=sales_jan.csv status=moved_to_processed
-[HERMES] file=sales_jan.csv chunk=0 status=dispatched rows=1000
-[HERMES] file=sales_jan.csv chunk=1 status=dispatched rows=1000
-[HERMES] file=sales_jan.csv chunk=2 status=dispatched rows=342
-[HERMES] file=sales_jan.csv all_chunks=3 status=complete
-[HERMES] file=sales_jan.csv chunk=1 status=worker_error retry=1/3
+[HERMES] file=job_12_file_7.csv status=detected
+[HERMES] file=job_12_file_7.csv status=moved_to_processing
+[HERMES] file=job_12_file_7.csv chunk=0 status=dispatched rows=1000
+[HERMES] file=job_12_file_7.csv all_chunks=1 status=complete
+[HERMES] file=job_12_file_7.csv status=moved_to_processed
 ```
 
 ---
@@ -566,9 +566,9 @@ they must be updated when tests or source modules change.
 - [x] Docker + Docker Compose clean-room startup
 - [x] Parameterized prompts persisted as CSV-column mappings
 - [x] Hugging Face Chat Completion through Featherless AI
-- [x] Automated suite (245 tests, 74% overall coverage at `e18a80b`)
-- [ ] Split active `processing` storage from the successful `processed` archive
-- [ ] Formalize the PostgreSQL/filesystem contract with `hermes-webapp`
+- [x] Automated baseline suite (245 tests, 74% overall coverage at `e18a80b`)
+- [x] Split active `processing` storage from the successful `processed` archive
+- [x] Formalize the PostgreSQL/filesystem contract with `hermes-webapp`
 - [ ] Benchmark and harden local inference on Apple Silicon
 
 ---

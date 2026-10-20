@@ -23,7 +23,7 @@ COPY scripts/ ./scripts/
 COPY alembic.ini .
 
 # Crea le cartelle di base per i CSV
-RUN mkdir -p /app/uploads_web /app/processed /app/failed /app/interrupted
+RUN mkdir -p /app/data/uploads_web /app/data/processing /app/data/processed /app/data/failed /app/data/interrupted
 
 # Esponiamo la porta 8000 per la Dashboard Web
 EXPOSE 8000

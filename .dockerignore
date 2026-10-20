@@ -12,12 +12,14 @@ htmlcov
 temp_logs.txt
 
 uploads_web
+processing
 processed
 failed
 interrupted
 results
 pending
 archive
+data
 
 test
 docs

@@ -9,6 +9,7 @@ import concurrent.futures
 from .core import config
 from .core.watcher import get_next_file
 from .core.mover import move_file
+from .core.job_file import parse_job_filename
 from .core.reader import read_chunks
 from .workers.dispatcher import Dispatcher
 from .workers.worker_base import FatalWorkerError
@@ -39,17 +40,23 @@ def _process_file_blocking(target_file):
     """Esegue la logica di monitoraggio e chunking di un file in background."""
     config.logger.info(f"file={target_file.name} status=detected")
 
-    # STEP 2 — Atomic Move
+    # Il rename INBOX -> PROCESSING assegna il file a una sola istanza Hermes.
     try:
-        processing_file = move_file(target_file, config.ARCHIVE)
+        processing_file = move_file(target_file, config.PROCESSING)
     except Exception:
         return 
 
     # STEP 3 & 4 — Chunked Read & Dispatch
     try:
-        import re
-        job_id_match = re.search(r"job_(\d+)_", processing_file.name)
-        job_id = int(job_id_match.group(1)) if job_id_match else None
+        try:
+            job_file_ids = parse_job_filename(processing_file.name)
+        except ValueError as error:
+            config.logger.error(
+                f"status=invalid_filename file={processing_file.name} reason='{error}'"
+            )
+            move_file(processing_file, config.FAILED)
+            return
+        job_id = job_file_ids.execution_id
         
         chunk_futures = []
         cancel_event = threading.Event()
@@ -171,6 +178,8 @@ def _process_file_blocking(target_file):
             except Exception:
                 pass
 
+        move_file(processing_file, config.ARCHIVE)
+
     except Exception as e:
         config.logger.error(f"file={processing_file.name} status=failed_processing error={str(e)}")
         
@@ -204,25 +213,38 @@ def process_inbox():
     file_monitor_pool.submit(_process_file_blocking, target_file)
 
 def recover_interrupted_jobs():
-    """Recupera i job interrotti (in processing o nella cartella interrupted) e li riporta in INBOX."""
-    config.logger.info("status=recovering_jobs from=INTERRUPTED,ARCHIVE to=INBOX")
-    
-    import shutil
-    # Recupera i file in elaborazione (interrotti bruscamente)
-    for f in config.ARCHIVE.glob("*.csv"):
-        try:
-            shutil.move(str(f), str(config.INBOX / f.name))
-            config.logger.info(f"status=recovered_from_processing file={f.name}")
-        except Exception as e:
-            config.logger.error(f"Errore recupero file {f.name}: {e}")
-            
-    # Recupera i file rimandati (interrotti gracefulmente per shutdown)
-    for f in config.INTERRUPTED.glob("*.csv"):
-        try:
-            shutil.move(str(f), str(config.INBOX / f.name))
-            config.logger.info(f"status=recovered_from_interrupted file={f.name}")
-        except Exception as e:
-            config.logger.error(f"Errore recupero file {f.name}: {e}")
+    """Riporta in INBOX i file rimasti in processing o interrotti."""
+    config.logger.info("status=recovering_jobs from=INTERRUPTED,PROCESSING to=INBOX")
+
+    for source, source_name in (
+        (config.PROCESSING, "processing"),
+        (config.INTERRUPTED, "interrupted"),
+    ):
+        for file_path in source.glob("*.csv"):
+            try:
+                ids = parse_job_filename(file_path.name)
+            except ValueError as error:
+                config.logger.error(
+                    f"status=recovery_invalid_filename file={file_path.name} "
+                    f"reason='{error}'"
+                )
+                move_file(file_path, config.FAILED)
+                continue
+
+            try:
+                move_file(file_path, config.INBOX)
+                with SessionLocal() as db:
+                    repository.set_task_status_by_execution(
+                        db, ids.execution_id, JobStatus.QUEUED.value
+                    )
+                    db.commit()
+                config.logger.info(
+                    f"status=recovered_from_{source_name} file={file_path.name}"
+                )
+            except Exception as error:
+                config.logger.error(
+                    f"Errore recupero file {file_path.name}: {error}"
+                )
 
 def main():
     global dispatcher
