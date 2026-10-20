@@ -22,6 +22,7 @@ from ...db import repository
 from ...db.models import Utente, Task, Esecuzione, Risultato, ModelloLLM
 from ...db.status import JobStatus, ResultStatus
 from ...core import config
+from ...core.job_file import build_job_filename
 from ...core.prompt_template import PromptTemplateError, validate_prompt_data
 from ... import main as hermes_main
 
@@ -182,21 +183,47 @@ async def upload_csv(
         id_esecuzione = esecuzione.id_esecuzione
         id_file = file_csv.id_file
 
-        # ── Salva in INBOX con naming convention ─────────────────────────────
+        # Pubblica il file soltanto dopo il commit DB. Il watcher ignora il
+        # suffisso .part, quindi non può osservare un job ancora incompleto.
         config.init_directories()
-        dest_name = f"job_{id_esecuzione}_file_{id_file}.csv"
+        dest_name = build_job_filename(id_esecuzione, id_file)
         dest_path = config.INBOX / dest_name
+        staging_path = config.INBOX / f".{dest_name}.{uuid.uuid4().hex}.part"
 
         try:
-            dest_path.write_bytes(content)
+            staging_path.write_bytes(content)
         except Exception as e:
             db.rollback()
             raise HTTPException(
                 status_code=500,
-                detail=f"Impossibile salvare il file in INBOX: {str(e)}"
+                detail=f"Impossibile preparare il file per la INBOX: {str(e)}"
             )
 
-        db.commit()
+        try:
+            db.commit()
+        except Exception as e:
+            db.rollback()
+            staging_path.unlink(missing_ok=True)
+            raise HTTPException(
+                status_code=500,
+                detail=f"Impossibile registrare il job nel database: {str(e)}",
+            )
+
+        try:
+            staging_path.replace(dest_path)
+        except Exception as e:
+            staging_path.unlink(missing_ok=True)
+            try:
+                repository.set_task_status_by_execution(
+                    db, id_esecuzione, JobStatus.FAILED.value
+                )
+                db.commit()
+            except Exception:
+                db.rollback()
+            raise HTTPException(
+                status_code=500,
+                detail=f"Impossibile pubblicare il file nella INBOX: {str(e)}",
+            )
 
         config.logger.info(
             f"[UPLOAD] file={dest_name} esecuzione={id_esecuzione} "

@@ -12,8 +12,10 @@ test_reviews.csv
 test_reviews_output.csv
 results/
 uploads_web/
+processing/
 processed/
 failed/
 interrupted/
 pending/
 archive/
+data/

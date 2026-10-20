@@ -114,8 +114,8 @@ class TestProcessInbox:
     def test_fatal_error_moves_file_to_failed(self):
         """Se un chunk solleva FatalWorkerError, il file deve essere spostato in FAILED."""
         self._setup_dispatcher()
-        fake_file = Path("exec_1_file_1.csv")
-        processed = Path("processed") / fake_file.name
+        fake_file = Path("job_1_file_1.csv")
+        processing = Path("processing") / fake_file.name
 
         mock_future = MagicMock()
         mock_future.result.side_effect = FatalWorkerError("token non valido")
@@ -124,9 +124,12 @@ class TestProcessInbox:
         fake_chunk = pd.DataFrame({"a": [1]})
 
         with patch("src.main.get_next_file", return_value=fake_file), \
-             patch("src.main.move_file", return_value=processed) as mock_move, \
+             patch("src.main.move_file", return_value=processing) as mock_move, \
              patch("src.main.read_chunks", return_value=iter([fake_chunk])), \
              patch("src.main.dispatcher") as mock_disp, \
+             patch("src.main.repository.get_execution_context",
+                   return_value={"nome_modello": "test-model"}), \
+             patch("src.main.repository.set_task_status_by_execution"), \
              patch("src.main.concurrent.futures.as_completed", return_value=iter([mock_future])), \
              patch(
                  "src.main.file_monitor_pool.submit",
@@ -142,8 +145,8 @@ class TestProcessInbox:
     def test_successful_processing_logs_complete(self):
         """Un flusso completo senza errori deve completarsi senza eccezioni."""
         self._setup_dispatcher()
-        fake_file = Path("exec_1_file_1.csv")
-        processed = Path("processed") / fake_file.name
+        fake_file = Path("job_1_file_1.csv")
+        processing = Path("processing") / fake_file.name
 
         mock_future = MagicMock()
         mock_future.result.return_value = {"status": "ok"}
@@ -152,9 +155,12 @@ class TestProcessInbox:
         fake_chunk = pd.DataFrame({"a": [1]})
 
         with patch("src.main.get_next_file", return_value=fake_file), \
-             patch("src.main.move_file", return_value=processed), \
+             patch("src.main.move_file", return_value=processing) as mock_move, \
              patch("src.main.read_chunks", return_value=iter([fake_chunk])), \
              patch("src.main.dispatcher") as mock_disp, \
+             patch("src.main.repository.get_execution_context",
+                   return_value={"nome_modello": "test-model"}), \
+             patch("src.main.repository.set_task_status_by_execution"), \
              patch("src.main.concurrent.futures.as_completed", return_value=iter([mock_future])), \
              patch(
                  "src.main.file_monitor_pool.submit",
@@ -164,11 +170,15 @@ class TestProcessInbox:
             mock_disp.submit_chunk.return_value = mock_future
             main_module.process_inbox()  # Non deve sollevare eccezioni
 
+        assert mock_move.call_count == 2
+        assert mock_move.call_args_list[0].args[1] == main_module.config.PROCESSING
+        assert mock_move.call_args_list[1].args[1] == main_module.config.ARCHIVE
+
     def test_row_errors_mark_job_failed_and_move_file(self):
         """Risultati di riga in errore non devono produrre un falso successo."""
         self._setup_dispatcher()
         fake_file = Path("job_1_file_1.csv")
-        processed = Path("processed") / fake_file.name
+        processing = Path("processing") / fake_file.name
 
         mock_future = MagicMock()
         mock_future.result.return_value = {
@@ -181,7 +191,7 @@ class TestProcessInbox:
         fake_chunk = pd.DataFrame({"a": [1]})
 
         with patch("src.main.get_next_file", return_value=fake_file), \
-             patch("src.main.move_file", return_value=processed) as mock_move, \
+             patch("src.main.move_file", return_value=processing) as mock_move, \
              patch("src.main.read_chunks", return_value=iter([fake_chunk])), \
              patch("src.main.dispatcher") as mock_disp, \
              patch("src.main.repository.get_execution_context",
@@ -204,3 +214,42 @@ class TestProcessInbox:
             status_call.args[1:] == (1, "Fallito")
             for status_call in mock_status.call_args_list
         )
+
+    def test_recovery_does_not_requeue_completed_archive(self, tmp_path, monkeypatch):
+        inbox = tmp_path / "inbox"
+        processing = tmp_path / "processing"
+        archive = tmp_path / "processed"
+        interrupted = tmp_path / "interrupted"
+        for directory in (inbox, processing, archive, interrupted):
+            directory.mkdir()
+
+        active = processing / "job_1_file_1.csv"
+        deferred = interrupted / "job_2_file_2.csv"
+        completed = archive / "job_3_file_3.csv"
+        active.write_text("active")
+        deferred.write_text("deferred")
+        completed.write_text("completed")
+
+        monkeypatch.setattr(main_module.config, "INBOX", inbox)
+        monkeypatch.setattr(main_module.config, "PROCESSING", processing)
+        monkeypatch.setattr(main_module.config, "ARCHIVE", archive)
+        monkeypatch.setattr(main_module.config, "INTERRUPTED", interrupted)
+
+        session = MagicMock()
+        session_context = MagicMock()
+        session_context.__enter__.return_value = session
+        session_context.__exit__.return_value = False
+
+        with (
+            patch("src.main.SessionLocal", return_value=session_context),
+            patch("src.main.repository.set_task_status_by_execution") as set_status,
+        ):
+            main_module.recover_interrupted_jobs()
+
+        assert (inbox / active.name).read_text() == "active"
+        assert (inbox / deferred.name).read_text() == "deferred"
+        assert completed.read_text() == "completed"
+        assert [call.args[1:] for call in set_status.call_args_list] == [
+            (1, "In attesa"),
+            (2, "In attesa"),
+        ]

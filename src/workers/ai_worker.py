@@ -9,6 +9,7 @@ from huggingface_hub import InferenceClient
 from huggingface_hub.utils import HfHubHTTPError
 
 from ..core import config
+from ..core.job_file import parse_job_filename
 from ..core.prompt_template import PromptTemplateError, render_prompt
 from ..db.db import SessionLocal
 from ..db import repository
@@ -23,11 +24,11 @@ class LocalAIWorker(WorkerBase):
         filename = metadata.get("filename")
         
         try:
-            parts = filename.split('_')
-            id_esecuzione = int(parts[1])
-            id_file = int(parts[3].split('.')[0])
-        except Exception:
-            raise FatalWorkerError(f"Nome file non valido: {filename}")
+            job_file_ids = parse_job_filename(filename)
+            id_esecuzione = job_file_ids.execution_id
+            id_file = job_file_ids.file_id
+        except (TypeError, ValueError) as error:
+            raise FatalWorkerError(f"Nome file non valido: {filename}") from error
 
         with SessionLocal() as db:
             try:

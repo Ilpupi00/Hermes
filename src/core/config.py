@@ -14,11 +14,16 @@ logging.basicConfig(
 
 logger= logging.getLogger("hermes")
 
-#Variabili di ambiente
-INBOX = Path(os.getenv("HERMES_INBOX", "./uploads_web"))
-ARCHIVE = Path(os.getenv("HERMES_ARCHIVE", "./processed"))
-FAILED = Path(os.getenv("HERMES_FAILED", "./failed"))
-INTERRUPTED = Path(os.getenv("HERMES_INTERRUPTED", "./interrupted"))
+# Directory del ciclo di vita. Devono condividere lo stesso filesystem affinché
+# i rename usati per pubblicazione e claim siano realmente atomici.
+DATA_ROOT = Path(os.getenv("HERMES_DATA_ROOT", "."))
+INBOX = Path(os.getenv("HERMES_INBOX", str(DATA_ROOT / "uploads_web")))
+PROCESSING = Path(os.getenv("HERMES_PROCESSING", str(DATA_ROOT / "processing")))
+ARCHIVE = Path(os.getenv("HERMES_ARCHIVE", str(DATA_ROOT / "processed")))
+FAILED = Path(os.getenv("HERMES_FAILED", str(DATA_ROOT / "failed")))
+INTERRUPTED = Path(
+    os.getenv("HERMES_INTERRUPTED", str(DATA_ROOT / "interrupted"))
+)
 
 POLL_INTERVAL = int(os.getenv("HERMES_POLL_INTERVAL", "60"))
 CHUNK_SIZE = int(os.getenv("HERMES_CHUNK_SIZE", "1000"))
@@ -48,5 +53,5 @@ WORKER_CLASS = os.getenv("HERMES_WORKER_CLASS", "src.workers.hybrid_worker.Hybri
 
 
 def init_directories():
-    for directory in [INBOX, ARCHIVE, FAILED, INTERRUPTED]:
+    for directory in [INBOX, PROCESSING, ARCHIVE, FAILED, INTERRUPTED]:
         directory.mkdir(parents=True,exist_ok=True)
