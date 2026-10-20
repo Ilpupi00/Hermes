@@ -1,5 +1,18 @@
+from datetime import UTC, datetime
+import json
+
 from sqlalchemy.orm import Session
-from .models import Esecuzione, Task, Utente, ModelloLLM, Risultato
+from .models import (
+    Esecuzione,
+    FileCSV,
+    Mapping,
+    ModelloLLM,
+    RigaInput,
+    Risultato,
+    Task,
+    Utente,
+)
+from .status import JobStatus
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Execution context (usato dal HybridWorker)
@@ -14,7 +27,9 @@ def get_execution_context(db: Session, id_esecuzione: int) -> dict:
             ModelloLLM.tipo,
             ModelloLLM.endpoint_url,
             Task.temperatura,
-            Task.max_tokens
+            Task.max_tokens,
+            Esecuzione.id_task,
+            Esecuzione.id_file,
         )
         .select_from(Esecuzione)
         .join(Task, Esecuzione.id_task == Task.id_task)
@@ -27,6 +42,16 @@ def get_execution_context(db: Session, id_esecuzione: int) -> dict:
     if not result:
         raise ValueError(f"Esecuzione {id_esecuzione} non trovata.")
 
+    prompt_mapping = {
+        row.placeholder_prompt: row.colonna_csv
+        for row in (
+            db.query(Mapping)
+            .filter(Mapping.id_task == result.id_task)
+            .order_by(Mapping.id_mapping)
+            .all()
+        )
+    }
+
     return {
         "hub_token":    result.hub_token,
         "prompt":       result.prompt,
@@ -35,7 +60,77 @@ def get_execution_context(db: Session, id_esecuzione: int) -> dict:
         "endpoint_url": result.endpoint_url,
         "temperatura":  result.temperatura if result.temperatura is not None else 0.1,
         "max_tokens":   result.max_tokens  if result.max_tokens  is not None else 500,
+        "prompt_mapping": prompt_mapping,
+        "id_file":      result.id_file,
     }
+
+
+def create_prompt_mappings(
+    db: Session,
+    id_task: int,
+    placeholder_mapping: dict[str, str],
+) -> list[Mapping]:
+    """Persiste il mapping placeholder → colonna CSV associato al task."""
+    mappings = [
+        Mapping(
+            id_task=id_task,
+            placeholder_prompt=placeholder,
+            colonna_csv=column,
+        )
+        for placeholder, column in placeholder_mapping.items()
+    ]
+    db.add_all(mappings)
+    db.flush()
+    return mappings
+
+
+def create_input_file(
+    db: Session,
+    nome_file: str,
+    rows: list[dict[str, str | None]],
+) -> FileCSV:
+    """Registra il CSV e le sue righe, restituendo il record del file."""
+    file_csv = FileCSV(nome_file=nome_file, numero_righe=len(rows))
+    db.add(file_csv)
+    db.flush()
+
+    db.add_all(
+        RigaInput(
+            id_file=file_csv.id_file,
+            indice_riga=index,
+            contenuto=json.dumps(row, ensure_ascii=False),
+        )
+        for index, row in enumerate(rows)
+    )
+    db.flush()
+    return file_csv
+
+
+def get_input_row_ids(
+    db: Session,
+    id_file: int,
+    row_indexes: list[int],
+) -> dict[int, int]:
+    """Restituisce la corrispondenza indice CSV → chiave della riga persistita."""
+    if not row_indexes:
+        return {}
+
+    rows = (
+        db.query(RigaInput.indice_riga, RigaInput.id_riga_input)
+        .filter(
+            RigaInput.id_file == id_file,
+            RigaInput.indice_riga.in_(row_indexes),
+        )
+        .all()
+    )
+    result = {int(row.indice_riga): int(row.id_riga_input) for row in rows}
+    missing = sorted(set(row_indexes) - result.keys())
+    if missing:
+        raise ValueError(
+            f"Righe input mancanti per file {id_file}: {missing}"
+        )
+    return result
+
 
 def save_result(db: Session, id_esecuzione: int, id_file: int, id_riga_input: int, output: str, tempo_esecuzione: float, stato: str):
     nuovo_risultato = Risultato(
@@ -50,11 +145,22 @@ def save_result(db: Session, id_esecuzione: int, id_file: int, id_riga_input: in
     db.flush()
 
 def set_task_status_by_execution(db: Session, id_esecuzione: int, stato: str):
+    target_status = JobStatus(stato)
     esecuzione = db.query(Esecuzione).filter(Esecuzione.id_esecuzione == id_esecuzione).first()
     if esecuzione:
+        esecuzione.stato = target_status.value
+        if target_status == JobStatus.RUNNING and esecuzione.data_inizio is None:
+            esecuzione.data_inizio = datetime.now(UTC).replace(tzinfo=None)
+        if target_status in {
+            JobStatus.COMPLETED,
+            JobStatus.FAILED,
+            JobStatus.CANCELLED,
+        }:
+            esecuzione.data_fine = datetime.now(UTC).replace(tzinfo=None)
+
         task = db.query(Task).filter(Task.id_task == esecuzione.id_task).first()
         if task:
-            task.stato = stato
+            task.stato = target_status.value
             db.flush()
 
 # ─────────────────────────────────────────────────────────────────────────────

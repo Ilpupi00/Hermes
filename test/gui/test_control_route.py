@@ -19,6 +19,7 @@ from fastapi.testclient import TestClient
 from unittest.mock import MagicMock, patch
 
 from src.gui.routes.control import router
+from src.core.security import get_current_admin
 import src.gui.state as state
 import src.main as hermes_main
 
@@ -31,6 +32,9 @@ import src.main as hermes_main
 def client():
     app = FastAPI()
     app.include_router(router)
+    app.dependency_overrides[get_current_admin] = lambda: MagicMock(
+        username="test-admin"
+    )
     return TestClient(app)
 
 

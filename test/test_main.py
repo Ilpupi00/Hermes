@@ -8,7 +8,7 @@ Copre le funzioni testabili senza avviare il processo completo:
 """
 import pytest
 import threading
-from unittest.mock import MagicMock, patch, call
+from unittest.mock import MagicMock, patch
 from pathlib import Path
 
 import src.main as main_module
@@ -102,7 +102,11 @@ class TestProcessInbox:
         fake_file = Path("fake_file.csv")
 
         with patch("src.main.get_next_file", return_value=fake_file), \
-             patch("src.main.move_file", side_effect=OSError("disk full")):
+             patch("src.main.move_file", side_effect=OSError("disk full")), \
+             patch(
+                 "src.main.file_monitor_pool.submit",
+                 side_effect=lambda fn, arg: fn(arg),
+             ):
             main_module.process_inbox()
 
         d.submit_chunk.assert_not_called()
@@ -123,7 +127,11 @@ class TestProcessInbox:
              patch("src.main.move_file", return_value=processed) as mock_move, \
              patch("src.main.read_chunks", return_value=iter([fake_chunk])), \
              patch("src.main.dispatcher") as mock_disp, \
-             patch("src.main.concurrent.futures.as_completed", return_value=iter([mock_future])):
+             patch("src.main.concurrent.futures.as_completed", return_value=iter([mock_future])), \
+             patch(
+                 "src.main.file_monitor_pool.submit",
+                 side_effect=lambda fn, arg: fn(arg),
+             ):
 
             mock_disp.submit_chunk.return_value = mock_future
             main_module.process_inbox()
@@ -147,7 +155,52 @@ class TestProcessInbox:
              patch("src.main.move_file", return_value=processed), \
              patch("src.main.read_chunks", return_value=iter([fake_chunk])), \
              patch("src.main.dispatcher") as mock_disp, \
-             patch("src.main.concurrent.futures.as_completed", return_value=iter([mock_future])):
+             patch("src.main.concurrent.futures.as_completed", return_value=iter([mock_future])), \
+             patch(
+                 "src.main.file_monitor_pool.submit",
+                 side_effect=lambda fn, arg: fn(arg),
+             ):
 
             mock_disp.submit_chunk.return_value = mock_future
             main_module.process_inbox()  # Non deve sollevare eccezioni
+
+    def test_row_errors_mark_job_failed_and_move_file(self):
+        """Risultati di riga in errore non devono produrre un falso successo."""
+        self._setup_dispatcher()
+        fake_file = Path("job_1_file_1.csv")
+        processed = Path("processed") / fake_file.name
+
+        mock_future = MagicMock()
+        mock_future.result.return_value = {
+            "status": "error",
+            "completed_rows": 0,
+            "error_rows": 1,
+        }
+
+        import pandas as pd
+        fake_chunk = pd.DataFrame({"a": [1]})
+
+        with patch("src.main.get_next_file", return_value=fake_file), \
+             patch("src.main.move_file", return_value=processed) as mock_move, \
+             patch("src.main.read_chunks", return_value=iter([fake_chunk])), \
+             patch("src.main.dispatcher") as mock_disp, \
+             patch("src.main.repository.get_execution_context",
+                   return_value={"nome_modello": "test-model"}), \
+             patch("src.main.repository.set_task_status_by_execution") as mock_status, \
+             patch("src.main.concurrent.futures.as_completed",
+                   return_value=iter([mock_future])), \
+             patch(
+                 "src.main.file_monitor_pool.submit",
+                 side_effect=lambda fn, arg: fn(arg),
+             ):
+
+            mock_disp.get_route.return_value = "default"
+            mock_disp.submit_chunk.return_value = mock_future
+            main_module.process_inbox()
+
+        assert mock_move.call_count == 2
+        assert mock_move.call_args_list[-1].args[1] == main_module.config.FAILED
+        assert any(
+            status_call.args[1:] == (1, "Fallito")
+            for status_call in mock_status.call_args_list
+        )

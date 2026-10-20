@@ -9,8 +9,10 @@ from huggingface_hub import InferenceClient
 from huggingface_hub.utils import HfHubHTTPError
 
 from ..core import config
+from ..core.prompt_template import PromptTemplateError, render_prompt
 from ..db.db import SessionLocal
 from ..db import repository
+from ..db.status import ResultStatus
 from .worker_base import WorkerBase, FatalWorkerError
 
 class LocalAIWorker(WorkerBase):
@@ -36,6 +38,7 @@ class LocalAIWorker(WorkerBase):
             token = context['hub_token']
             modello = context['nome_modello']
             prompt_base = context['prompt']
+            prompt_mapping = context.get('prompt_mapping', {})
             
             # --- PARAMETRI DINAMICI DAL DATABASE ---
             temp_db = context['temperatura']
@@ -46,7 +49,10 @@ class LocalAIWorker(WorkerBase):
                 raise FatalWorkerError("Token non valido o revocato.")
 
             # Inizializza client Hugging Face
-            client = InferenceClient(token=token)
+            client = InferenceClient(
+                provider=config.HF_INFERENCE_PROVIDER,
+                api_key=token,
+            )
             
             try:
                 for index, row in chunk.iterrows():
@@ -58,17 +64,48 @@ class LocalAIWorker(WorkerBase):
 
                     id_riga = row['id_riga_input']
                     dati_riga = row.drop('id_riga_input').to_dict()
-                    prompt_finale = f"{prompt_base}\n\nDati:\n{dati_riga}"
+                    try:
+                        rendered_prompt = render_prompt(
+                            prompt_base,
+                            dati_riga,
+                            prompt_mapping,
+                        )
+                    except PromptTemplateError as error:
+                        raise FatalWorkerError(
+                            f"Prompt parametrico non applicabile: {error}"
+                        ) from error
+
+                    prompt_finale = (
+                        rendered_prompt
+                        if prompt_mapping
+                        else f"{rendered_prompt}\n\nDati:\n{dati_riga}"
+                    )
                     
                     start_time = time.time()
                     try:
                         # Passiamo temp_db e max_tok_db presi dal database!
                         risposta = self._call_ai(client, modello, prompt_finale, temp_db, max_tok_db)
                         tempo = round(time.time() - start_time, 2)
-                        repository.save_result(db, id_esecuzione, id_file, id_riga, risposta, tempo, "Completato")
+                        repository.save_result(
+                            db,
+                            id_esecuzione,
+                            id_file,
+                            id_riga,
+                            risposta,
+                            tempo,
+                            ResultStatus.COMPLETED.value,
+                        )
                     except Exception as e:
                         config.logger.error(f"Riga {id_riga} fallita: {str(e)}")
-                        repository.save_result(db, id_esecuzione, id_file, id_riga, str(e), 0.0, "Errore")
+                        repository.save_result(
+                            db,
+                            id_esecuzione,
+                            id_file,
+                            id_riga,
+                            str(e),
+                            0.0,
+                            ResultStatus.ERROR.value,
+                        )
                 db.commit()
             except Exception as db_err:
                 db.rollback()
@@ -108,11 +145,11 @@ class LocalAIWorker(WorkerBase):
         before_sleep=before_sleep_log(config.logger, logging.WARNING)
     )
     def _call_ai(self, client: InferenceClient, model: str, prompt: str, temperature: float, max_tokens: int) -> str:
-        """Chiama il modello tramite Hugging Face usando parametri interamente dinamici."""
-        response = client.text_generation(
-            prompt,
+        """Chiama il modello remoto tramite Hugging Face Chat Completion."""
+        response = client.chat.completions.create(
             model=model,
-            max_new_tokens=max_tokens,      # <-- Ora è dinamico
-            temperature=temperature         # <-- Ora è dinamico
+            messages=[{"role": "user", "content": prompt}],
+            max_tokens=max_tokens,
+            temperature=temperature,
         )
-        return response
+        return response.choices[0].message.content or ""

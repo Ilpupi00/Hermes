@@ -3,7 +3,7 @@ Test unitari per src/workers/hybrid_worker.py
 
 Copre:
 - _is_token_valid: token valido, non valido, cache
-- _call_hf_api: chiamata a InferenceClient.text_generation
+- _call_hf_api: chiamata a InferenceClient.chat.completions.create
 - _call_local_api: chiamata a openai.OpenAI.chat.completions.create
 - process:
     - flusso completo hf_api (mock)
@@ -46,11 +46,13 @@ def good_context_hf():
     return {
         "hub_token":    "hf_abc123",
         "prompt":       "Analizza: {testo}",
+        "prompt_mapping": {"testo": "testo"},
         "nome_modello": "mistralai/Mistral-7B-Instruct-v0.3",
         "tipo":         "hf_api",
         "endpoint_url": None,
         "temperatura":  0.1,
         "max_tokens":   100,
+        "id_file":      2,
     }
 
 
@@ -59,11 +61,13 @@ def good_context_local():
     return {
         "hub_token":    None,
         "prompt":       "Analizza: {testo}",
+        "prompt_mapping": {"testo": "testo"},
         "nome_modello": "llama3",
         "tipo":         "local_url",
         "endpoint_url": "http://localhost:11434/v1",
         "temperatura":  0.1,
         "max_tokens":   100,
+        "id_file":      2,
     }
 
 
@@ -108,9 +112,11 @@ class TestIsTokenValid:
 # ─────────────────────────────────────────────────────────────────────────────
 
 class TestCallHfApi:
-    def test_returns_text_generation_result(self, worker):
+    def test_returns_chat_completion_content(self, worker):
         mock_client = MagicMock()
-        mock_client.text_generation.return_value = "Risposta AI"
+        mock_client.chat.completions.create.return_value = MagicMock(
+            choices=[MagicMock(message=MagicMock(content="Risposta AI"))]
+        )
         result = worker._call_hf_api(
             client=mock_client,
             model="mistralai/Mistral-7B",
@@ -122,7 +128,9 @@ class TestCallHfApi:
 
     def test_passes_correct_parameters(self, worker):
         mock_client = MagicMock()
-        mock_client.text_generation.return_value = "ok"
+        mock_client.chat.completions.create.return_value = MagicMock(
+            choices=[MagicMock(message=MagicMock(content="ok"))]
+        )
         worker._call_hf_api(
             client=mock_client,
             model="mistral",
@@ -130,12 +138,49 @@ class TestCallHfApi:
             temperature=0.7,
             max_tokens=200,
         )
-        mock_client.text_generation.assert_called_once_with(
-            "test",
+        mock_client.chat.completions.create.assert_called_once_with(
             model="mistral",
-            max_new_tokens=200,
+            messages=[{"role": "user", "content": "test"}],
+            max_tokens=200,
             temperature=0.7,
         )
+        mock_client.text_generation.assert_not_called()
+
+    def test_unsupported_model_is_fatal_without_retry(self, worker):
+        mock_client = MagicMock()
+        mock_client.chat.completions.create.side_effect = Exception(
+            "model_not_supported: not supported by any provider you have enabled"
+        )
+
+        with pytest.raises(FatalWorkerError, match="Inference Providers"):
+            worker._call_hf_api(
+                client=mock_client,
+                model="Qwen/Qwen2.5-0.5B-Instruct",
+                prompt="Ciao",
+                temperature=0.1,
+                max_tokens=50,
+            )
+
+        mock_client.chat.completions.create.assert_called_once()
+
+    def test_exhausted_credits_are_fatal_without_retry(self, worker):
+        mock_client = MagicMock()
+        billing_error = Exception(
+            "402 Payment Required: You have no remaining credits."
+        )
+        billing_error.response = MagicMock(status_code=402)
+        mock_client.chat.completions.create.side_effect = billing_error
+
+        with pytest.raises(FatalWorkerError, match="Credito Hugging Face"):
+            worker._call_hf_api(
+                client=mock_client,
+                model="Qwen/Qwen2.5-0.5B-Instruct",
+                prompt="Ciao",
+                temperature=0.1,
+                max_tokens=50,
+            )
+
+        mock_client.chat.completions.create.assert_called_once()
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -220,6 +265,7 @@ class TestProcessErrors:
             "hub_token": None, "prompt": "x", "nome_modello": "x",
             "tipo": "unknown_mode", "endpoint_url": None,
             "temperatura": 0.1, "max_tokens": 50,
+            "id_file": 2,
         }
         with patch("src.workers.hybrid_worker.repository.get_execution_context", return_value=ctx), \
              patch("src.workers.hybrid_worker.SessionLocal") as mock_session:
@@ -248,19 +294,31 @@ class TestProcessSuccess:
                    return_value=good_context_hf), \
              patch("src.workers.hybrid_worker.SessionLocal", return_value=mock_ctx), \
              patch.object(worker, "_is_token_valid", return_value=True), \
+             patch(
+                 "src.workers.hybrid_worker.repository.get_input_row_ids",
+                 return_value={0: 1, 1: 2},
+             ), \
              patch.object(worker, "_call_hf_api", return_value="Risposta OK") as mock_call, \
              patch("src.workers.hybrid_worker.repository.save_result"):
 
             result = worker.process(fake_chunk, {"filename": "exec_1_file_2.csv"})
 
         assert result["status"] == "ok"
+        assert result["completed_rows"] == 2
+        assert result["error_rows"] == 0
         assert mock_call.call_count == len(fake_chunk)
+        assert mock_call.call_args_list[0].args[2] == "Analizza: ciao"
+        assert mock_call.call_args_list[1].args[2] == "Analizza: mondo"
 
     def test_local_url_full_flow(self, worker, fake_chunk, good_context_local):
         mock_ctx, mock_db = self._mock_session()
         with patch("src.workers.hybrid_worker.repository.get_execution_context",
                    return_value=good_context_local), \
              patch("src.workers.hybrid_worker.SessionLocal", return_value=mock_ctx), \
+             patch(
+                 "src.workers.hybrid_worker.repository.get_input_row_ids",
+                 return_value={0: 1, 1: 2},
+             ), \
              patch.object(worker, "_call_local_api", return_value="Risposta locale") as mock_call, \
              patch("src.workers.hybrid_worker.openai.OpenAI"), \
              patch("src.workers.hybrid_worker.repository.save_result"):
@@ -268,7 +326,40 @@ class TestProcessSuccess:
             result = worker.process(fake_chunk, {"filename": "exec_1_file_2.csv"})
 
         assert result["status"] == "ok"
+        assert result["completed_rows"] == 2
+        assert result["error_rows"] == 0
         assert mock_call.call_count == len(fake_chunk)
+        assert mock_call.call_args_list[0].args[2] == "Analizza: ciao"
+
+    def test_plain_prompt_preserves_legacy_row_context(
+        self, worker, fake_chunk, good_context_local
+    ):
+        context = {
+            **good_context_local,
+            "prompt": "Analizza i dati.",
+            "prompt_mapping": {},
+        }
+        mock_ctx, mock_db = self._mock_session()
+        with patch(
+            "src.workers.hybrid_worker.repository.get_execution_context",
+            return_value=context,
+        ), patch(
+            "src.workers.hybrid_worker.SessionLocal", return_value=mock_ctx
+        ), patch(
+            "src.workers.hybrid_worker.repository.get_input_row_ids",
+            return_value={0: 1, 1: 2},
+        ), patch.object(
+            worker, "_call_local_api", return_value="Risposta locale"
+        ) as mock_call, patch(
+            "src.workers.hybrid_worker.openai.OpenAI"
+        ), patch(
+            "src.workers.hybrid_worker.repository.save_result"
+        ):
+            worker.process(fake_chunk, {"filename": "exec_1_file_2.csv"})
+
+        first_prompt = mock_call.call_args_list[0].args[2]
+        assert first_prompt.startswith("Analizza i dati.\n\nDati:\n")
+        assert "'testo': 'ciao'" in first_prompt
 
     def test_row_error_saves_errore_stato(self, worker, fake_chunk, good_context_hf):
         """Se una riga fallisce, deve salvare stato='Errore' senza interrompere il processo."""
@@ -277,11 +368,49 @@ class TestProcessSuccess:
                    return_value=good_context_hf), \
              patch("src.workers.hybrid_worker.SessionLocal", return_value=mock_ctx), \
              patch.object(worker, "_is_token_valid", return_value=True), \
+             patch(
+                 "src.workers.hybrid_worker.repository.get_input_row_ids",
+                 return_value={0: 1, 1: 2},
+             ), \
              patch.object(worker, "_call_hf_api", side_effect=Exception("API down")), \
              patch("src.workers.hybrid_worker.repository.save_result") as mock_save:
 
-            worker.process(fake_chunk, {"filename": "exec_1_file_2.csv"})
+            result = worker.process(
+                fake_chunk, {"filename": "exec_1_file_2.csv"}
+            )
 
         # Tutte le righe devono essere salvate con stato='Errore'
         for call in mock_save.call_args_list:
             assert call.kwargs.get("stato") == "Errore" or call.args[-1] == "Errore"
+        assert result["status"] == "error"
+        assert result["completed_rows"] == 0
+        assert result["error_rows"] == 2
+
+    def test_fatal_row_error_is_propagated(
+        self, worker, fake_chunk, good_context_hf
+    ):
+        mock_ctx, mock_db = self._mock_session()
+        with patch(
+            "src.workers.hybrid_worker.repository.get_execution_context",
+            return_value=good_context_hf,
+        ), patch(
+            "src.workers.hybrid_worker.SessionLocal", return_value=mock_ctx
+        ), patch.object(
+            worker, "_is_token_valid", return_value=True
+        ), patch(
+            "src.workers.hybrid_worker.repository.get_input_row_ids",
+            return_value={0: 1, 1: 2},
+        ), patch.object(
+            worker,
+            "_call_hf_api",
+            side_effect=FatalWorkerError("provider non abilitato"),
+        ) as mock_call, patch(
+            "src.workers.hybrid_worker.repository.save_result"
+        ) as mock_save:
+            with pytest.raises(FatalWorkerError, match="provider non abilitato"):
+                worker.process(
+                    fake_chunk, {"filename": "exec_1_file_2.csv"}
+                )
+
+        mock_call.assert_called_once()
+        mock_save.assert_not_called()

@@ -5,6 +5,7 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
+    "alembic>=1.17,<2",
     "dotenv>=0.9.9",
     "huggingface-hub>=1.21.0",
     "openai>=2.44.0",
@@ -14,19 +15,26 @@ dependencies = [
     "sqlalchemy>=2.0.51",
     "tenacity>=9.1.4",
     "requests",
-    "torch",
-    "transformers",
-    "accelerate",
-    "pytest>=9.1.1",
-    "pytest-cov>=7.1.0",
-    "pytest-mock>=3.15.1",
     "fastapi",
     "uvicorn",
     "prometheus-fastapi-instrumentator",
     "python-multipart",
-    "pywebview",
-    "customtkinter",
     "websockets",
     "bcrypt>=5.0.0",
     "pyjwt>=2.13.0",
+]
+
+[project.optional-dependencies]
+local-llm = [
+    "torch",
+    "transformers",
+    "accelerate",
+]
+desktop = [
+    "pywebview",
+]
+dev = [
+    "pytest>=9.1.1",
+    "pytest-cov>=7.1.0",
+    "pytest-mock>=3.15.1",
 ]

@@ -62,6 +62,12 @@ class TestConfigDefaults:
         from src.core.config import LOCAL_AI_BASE_URL
         assert LOCAL_AI_BASE_URL.startswith("http")
 
+    def test_hf_inference_provider_default(self):
+        """Il routing remoto deve avere un provider esplicito e non vuoto."""
+        from src.core.config import HF_INFERENCE_PROVIDER
+
+        assert HF_INFERENCE_PROVIDER
+
 
 class TestInitDirectories:
     """Verifica che init_directories crei le cartelle necessarie."""

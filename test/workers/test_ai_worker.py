@@ -80,7 +80,9 @@ class TestIsTokenValid:
 class TestCallAi:
     def test_returns_string_response(self, worker):
         mock_client = MagicMock()
-        mock_client.text_generation.return_value = "risposta generata"
+        mock_client.chat.completions.create.return_value = MagicMock(
+            choices=[MagicMock(message=MagicMock(content="risposta generata"))]
+        )
 
         result = worker._call_ai(mock_client, "mistral-7b", "prompt di test", 0.5, 200)
 
@@ -88,16 +90,19 @@ class TestCallAi:
 
     def test_passes_correct_parameters(self, worker):
         mock_client = MagicMock()
-        mock_client.text_generation.return_value = "ok"
+        mock_client.chat.completions.create.return_value = MagicMock(
+            choices=[MagicMock(message=MagicMock(content="ok"))]
+        )
 
         worker._call_ai(mock_client, "model-xyz", "my prompt", 0.3, 512)
 
-        mock_client.text_generation.assert_called_once_with(
-            "my prompt",
+        mock_client.chat.completions.create.assert_called_once_with(
             model="model-xyz",
-            max_new_tokens=512,
+            messages=[{"role": "user", "content": "my prompt"}],
+            max_tokens=512,
             temperature=0.3,
         )
+        mock_client.text_generation.assert_not_called()
 
 
 # ---------------------------------------------------------------------------

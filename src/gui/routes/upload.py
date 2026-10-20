@@ -20,7 +20,9 @@ import io, csv as csv_mod
 from ...db.db import SessionLocal
 from ...db import repository
 from ...db.models import Utente, Task, Esecuzione, Risultato, ModelloLLM
+from ...db.status import JobStatus, ResultStatus
 from ...core import config
+from ...core.prompt_template import PromptTemplateError, validate_prompt_data
 from ... import main as hermes_main
 
 router = APIRouter(prefix="/api")
@@ -74,9 +76,17 @@ async def upload_csv(
     # Verifica che sia CSV leggibile e conta le righe
     try:
         decoded = content.decode("utf-8-sig")
-        reader  = csv_mod.reader(io.StringIO(decoded))
-        rows    = list(reader)
-        n_righe = max(0, len(rows) - 1)  # escludi header
+        reader = csv_mod.DictReader(io.StringIO(decoded))
+        if not reader.fieldnames:
+            raise ValueError("intestazione CSV mancante")
+        rows = list(reader)
+        n_righe = len(rows)
+
+        prompt_mapping = validate_prompt_data(
+            prompt,
+            reader.fieldnames,
+            rows,
+        )
         
         # ── Auto-tuning del chunk_size per parallelismo ottimale ──
         num_workers = config.MAX_WORKERS
@@ -86,6 +96,8 @@ async def upload_csv(
                 config.logger.info(f"Auto-tuning chunk_size da {chunk_size} a {optimal_chunk} per massimizzare parallelismo (righe={n_righe}, workers={num_workers})")
                 chunk_size = optimal_chunk
 
+    except PromptTemplateError as e:
+        raise HTTPException(status_code=422, detail=str(e))
     except Exception as e:
         raise HTTPException(
             status_code=422,
@@ -135,12 +147,15 @@ async def upload_csv(
             except requests.RequestException as e:
                 config.logger.warning(f"Impossibile verificare il modello su HF: {e}")
 
+        # Registra il file e le righe prima di creare l'esecuzione.
+        file_csv = repository.create_input_file(db, file.filename, rows)
+
         # Crea Task
         task = Task(
             id_utente=utente.id_utente,
             id_modello=id_modello,
             nome=f"Upload {file.filename[:50]}",
-            stato="In attesa",
+            stato=JobStatus.QUEUED.value,
             prompt=prompt,
             temperatura=temperatura,
             max_tokens=max_tokens,
@@ -148,13 +163,24 @@ async def upload_csv(
         db.add(task)
         db.flush()
 
+        repository.create_prompt_mappings(
+            db,
+            task.id_task,
+            prompt_mapping,
+        )
+
         # Crea Esecuzione
-        esecuzione = Esecuzione(id_task=task.id_task, totale_righe=n_righe)
+        esecuzione = Esecuzione(
+            id_task=task.id_task,
+            id_file=file_csv.id_file,
+            stato=JobStatus.QUEUED.value,
+            totale_righe=n_righe,
+        )
         db.add(esecuzione)
         db.flush()
 
         id_esecuzione = esecuzione.id_esecuzione
-        id_file       = 1  # primo (e unico) file di questo job
+        id_file = file_csv.id_file
 
         # ── Salva in INBOX con naming convention ─────────────────────────────
         config.init_directories()
@@ -229,12 +255,12 @@ async def list_jobs():
             
             completate = db.query(Risultato).filter(
                 Risultato.id_esecuzione == r.id_esecuzione,
-                Risultato.stato == "Completato"
+                Risultato.stato == ResultStatus.COMPLETED.value
             ).count()
             
             errori = db.query(Risultato).filter(
                 Risultato.id_esecuzione == r.id_esecuzione,
-                Risultato.stato != "Completato"
+                Risultato.stato != ResultStatus.COMPLETED.value
             ).count()
 
             jobs.append({

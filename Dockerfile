@@ -11,13 +11,16 @@ WORKDIR /app
 # Installa 'uv' per una gestione rapidissima delle dipendenze
 RUN pip install --no-cache-dir uv
 
-# Copia i file delle dipendenze e installale a livello di sistema nel container
-COPY requirements.txt .
-RUN uv pip install --system -r requirements.txt
+# Il runtime Docker usa API remote o server OpenAI-compatible. Le dipendenze
+# native Transformers/PyTorch restano opzionali sul sistema host: su Apple
+# Silicon una build Linux scaricherebbe inutilmente librerie CUDA.
+COPY requirements-runtime.txt .
+RUN uv pip install --system -r requirements-runtime.txt
 
 # Copia tutto il codice sorgente
 COPY src/ ./src/
 COPY scripts/ ./scripts/
+COPY alembic.ini .
 
 # Crea le cartelle di base per i CSV
 RUN mkdir -p /app/uploads_web /app/processed /app/failed /app/interrupted
@@ -26,4 +29,4 @@ RUN mkdir -p /app/uploads_web /app/processed /app/failed /app/interrupted
 EXPOSE 8000
 
 # Avvia l'applicazione direttamente tramite Uvicorn (Server Mode, niente finestra Desktop)
-CMD ["uvicorn", "src.gui.app:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["sh", "-c", "alembic upgrade head && exec uvicorn src.gui.app:app --host 0.0.0.0 --port 8000"]

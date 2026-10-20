@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   # --- IL DATABASE POSTGRESQL ---
   db:
@@ -7,16 +5,19 @@ services:
     container_name: hermes_db
     restart: always
     environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: password
-      POSTGRES_DB: postgres
+      POSTGRES_USER: ${DB_USER:?Set DB_USER in .env}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD in .env}
+      POSTGRES_DB: ${DB_NAME:?Set DB_NAME in .env}
     ports:
-      - "5432:5432"
+      - "127.0.0.1:${DB_PORT:-5432}:5432"
     volumes:
       # Persistenza dei dati del DB (se spegni il container, i dati restano)
       - postgres_data:/var/lib/postgresql/data
-      # Inietta il tuo schema SQL all'avvio!
-      - ./schema_progetto.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\""]
+      interval: 5s
+      timeout: 5s
+      retries: 10
 
   # --- IL MOTORE HERMES (AI SCHEDULER & DASHBOARD) ---
   hermes:
@@ -24,29 +25,52 @@ services:
     container_name: hermes_app
     restart: always
     depends_on:
-      - db
+      db:
+        condition: service_healthy
     ports:
-      - "8000:8000"
-    env_file:
-      - .env
+      - "127.0.0.1:8000:8000"
     environment:
       # Puntano al container 'db' invece che a 'localhost'
       - DB_HOST=db
       - DB_PORT=5432
-      - DB_USER=postgres
-      - DB_PASSWORD=password
-      - DB_NAME=postgres
+      - DB_USER=${DB_USER:?Set DB_USER in .env}
+      - DB_PASSWORD=${DB_PASSWORD:?Set DB_PASSWORD in .env}
+      - DB_NAME=${DB_NAME:?Set DB_NAME in .env}
+      - SECRET_KEY=${SECRET_KEY:?Set SECRET_KEY in .env}
+      - ACCESS_TOKEN_EXPIRE_MINUTES=${ACCESS_TOKEN_EXPIRE_MINUTES:-10080}
+      - HF_TOKEN=${HF_TOKEN:-}
+      - HF_INFERENCE_PROVIDER=${HF_INFERENCE_PROVIDER:-featherless-ai}
       # Configurazione delle cartelle per i CSV
       - HERMES_INBOX=/app/uploads_web
       - HERMES_ARCHIVE=/app/processed
       - HERMES_FAILED=/app/failed
+      - HERMES_INTERRUPTED=/app/interrupted
+      - HERMES_POLL_INTERVAL=${HERMES_POLL_INTERVAL:-60}
+      - HERMES_CHUNK_SIZE=${HERMES_CHUNK_SIZE:-1000}
+      - HERMES_MAX_WORKERS=${HERMES_MAX_WORKERS:-4}
+      - HERMES_MAX_RETRIES=${HERMES_MAX_RETRIES:-3}
+      - HERMES_WORKER_CLASS=${HERMES_WORKER_CLASS:-src.workers.hybrid_worker.HybridWorker}
+      - HERMES_AI_BASE_URL=${HERMES_AI_BASE_URL:-http://localhost:8000/v1}
     volumes:
       # Sincronizza le cartelle dal tuo PC al container
       # In questo modo, trascinando un file nel tuo PC, il container lo elabora!
       - ./uploads_web:/app/uploads_web
       - ./processed:/app/processed
       - ./failed:/app/failed
+      - ./interrupted:/app/interrupted
       - ./src:/app/src
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=3)",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
 
 volumes:
   postgres_data:

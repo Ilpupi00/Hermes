@@ -15,6 +15,7 @@ from .workers.worker_base import FatalWorkerError
 from .api.health import start_health_server
 from .db.db import SessionLocal
 from .db import repository
+from .db.status import JobStatus
 
 keep_running = True
 dispatcher = None
@@ -77,7 +78,9 @@ def _process_file_blocking(target_file):
         if job_id is not None:
             try:
                 with SessionLocal() as db:
-                    repository.set_task_status_by_execution(db, job_id, "In corso")
+                    repository.set_task_status_by_execution(
+                        db, job_id, JobStatus.RUNNING.value
+                    )
                     db.commit()
             except Exception:
                 pass
@@ -93,17 +96,26 @@ def _process_file_blocking(target_file):
             chunk_futures.append(future)
         
         has_fatal_error = False
+        has_row_errors = False
         
         for future in concurrent.futures.as_completed(chunk_futures):
             try:
-                future.result() 
+                chunk_result = future.result()
+                if (
+                    isinstance(chunk_result, dict)
+                    and chunk_result.get("error_rows", 0) > 0
+                ):
+                    has_row_errors = True
             except FatalWorkerError as fe:
                 config.logger.critical(f"status=CIRCUIT_BREAKER file={processing_file.name} reason='{str(fe)}'")
                 has_fatal_error = True
                 cancel_event.set()
                 break 
             except Exception as e:
-                config.logger.error(f"Chunk fallito in modo non fatale: {str(e)}")
+                config.logger.error(f"Chunk fallito: {str(e)}")
+                has_fatal_error = True
+                cancel_event.set()
+                break
 
         if has_fatal_error:
             for f in chunk_futures:
@@ -111,7 +123,9 @@ def _process_file_blocking(target_file):
             
             # Se stiamo spegnendo Hermes, è una sospensione (Rimandato), non un Fallito vero
             is_shutdown = not keep_running
-            new_status = "Rimandato" if is_shutdown else "Fallito"
+            new_status = (
+                JobStatus.DEFERRED.value if is_shutdown else JobStatus.FAILED.value
+            )
             target_dir = config.INTERRUPTED if is_shutdown else config.FAILED
             
             if job_id is not None:
@@ -125,13 +139,34 @@ def _process_file_blocking(target_file):
             move_file(processing_file, target_dir)
             return 
 
+        if has_row_errors:
+            config.logger.error(
+                f"file={processing_file.name} status=failed_with_row_errors"
+            )
+            if job_id is not None:
+                try:
+                    with SessionLocal() as db:
+                        repository.set_task_status_by_execution(
+                            db, job_id, JobStatus.FAILED.value
+                        )
+                        db.commit()
+                except Exception as e:
+                    config.logger.error(
+                        f"Impossibile aggiornare stato a {JobStatus.FAILED.value} "
+                        f"per job {job_id}: {e}"
+                    )
+            move_file(processing_file, config.FAILED)
+            return
+
         config.logger.info(f"file={processing_file.name} all_chunks={len(chunk_futures)} status=complete")
         
         # Se tutti i chunk sono andati a buon fine, il task è completato (i worker hanno salvato i risultati)
         if job_id is not None:
             try:
                 with SessionLocal() as db:
-                    repository.set_task_status_by_execution(db, job_id, "Completato")
+                    repository.set_task_status_by_execution(
+                        db, job_id, JobStatus.COMPLETED.value
+                    )
                     db.commit()
             except Exception:
                 pass
@@ -140,7 +175,9 @@ def _process_file_blocking(target_file):
         config.logger.error(f"file={processing_file.name} status=failed_processing error={str(e)}")
         
         is_shutdown = not keep_running
-        new_status = "Rimandato" if is_shutdown else "Fallito"
+        new_status = (
+            JobStatus.DEFERRED.value if is_shutdown else JobStatus.FAILED.value
+        )
         target_dir = config.INTERRUPTED if is_shutdown else config.FAILED
         
         if 'job_id' in locals() and job_id is not None:
@@ -159,7 +196,7 @@ def _process_file_blocking(target_file):
 def process_inbox():
     """Il Job che lo scheduler eseguirà ciclicamente."""
     target_file = get_next_file(config.INBOX)
-    
+
     if not target_file:
         return 
         
@@ -242,4 +279,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-    
