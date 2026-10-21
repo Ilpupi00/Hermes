@@ -132,17 +132,48 @@ def get_input_row_ids(
     return result
 
 
-def save_result(db: Session, id_esecuzione: int, id_file: int, id_riga_input: int, output: str, tempo_esecuzione: float, stato: str):
-    nuovo_risultato = Risultato(
-        id_esecuzione=id_esecuzione,
-        id_file=id_file,
-        id_riga_input=id_riga_input,
-        output=output,
-        tempo_esecuzione=tempo_esecuzione,
-        stato=stato
+def save_result(
+    db: Session,
+    id_esecuzione: int,
+    id_file: int,
+    id_riga_input: int,
+    output: str,
+    tempo_esecuzione: float,
+    stato: str,
+) -> Risultato:
+    """Crea o aggiorna il risultato di una riga in modo idempotente.
+
+    Il claim atomico del CSV garantisce un solo proprietario del job. Se il
+    processo cade dopo avere salvato alcune righe, il recovery può però
+    riprodurle: in quel caso aggiorniamo il record identificato dalla coppia
+    univoca ``(id_esecuzione, id_riga_input)`` anziché crearne un duplicato.
+    """
+    risultato = (
+        db.query(Risultato)
+        .filter(
+            Risultato.id_esecuzione == id_esecuzione,
+            Risultato.id_riga_input == id_riga_input,
+        )
+        .one_or_none()
     )
-    db.add(nuovo_risultato)
+
+    if risultato is None:
+        risultato = Risultato(
+            id_esecuzione=id_esecuzione,
+            id_file=id_file,
+            id_riga_input=id_riga_input,
+        )
+        db.add(risultato)
+    elif risultato.id_file != id_file:
+        raise ValueError(
+            "Risultato incoerente: la riga esiste già con un id_file diverso."
+        )
+
+    risultato.output = output
+    risultato.tempo_esecuzione = tempo_esecuzione
+    risultato.stato = stato
     db.flush()
+    return risultato
 
 def set_task_status_by_execution(db: Session, id_esecuzione: int, stato: str):
     target_status = JobStatus(stato)

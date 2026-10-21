@@ -428,7 +428,9 @@ Upstream producers must publish files as
 `.part` file, commit the related PostgreSQL records, and only then atomically
 rename it to `.csv`. Hermes ignores temporary files. On startup it requeues
 only files left in `processing` or `interrupted`; completed files in
-`processed` are never replayed.
+`processed` are never replayed. If recovery reprocesses rows that had already
+been persisted before a crash, Hermes updates the existing result identified
+by `(id_esecuzione, id_riga_input)` instead of inserting a duplicate.
 
 ---
 
@@ -569,6 +571,7 @@ they must be updated when tests or source modules change.
 - [x] Automated baseline suite (245 tests, 74% overall coverage at `e18a80b`)
 - [x] Split active `processing` storage from the successful `processed` archive
 - [x] Formalize the PostgreSQL/filesystem contract with `hermes-webapp`
+- [x] Persist replayed row results idempotently after recovery
 - [ ] Benchmark and harden local inference on Apple Silicon
 
 ---
