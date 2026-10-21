@@ -3,7 +3,7 @@ Test unitari per src/db/repository.py
 
 Copre:
 - get_execution_context: successo, risultato None (ValueError), valori di default
-- save_result: creazione e flush del record Risultato
+- save_result: creazione, aggiornamento idempotente e coerenza del file
 """
 import pytest
 from src.db.repository import (
@@ -274,6 +274,66 @@ class TestSaveResult:
 
         count = db_session.query(Risultato).filter_by(id_esecuzione=id_exec).count()
         assert count == 3
+
+    def test_replay_updates_existing_result_without_duplicate(self, db_session):
+        """Il replay della stessa riga aggiorna il record già persistito."""
+        id_exec = self._setup_execution(db_session)
+        id_file, row_ids = _input_keys(db_session, id_exec)
+
+        first = save_result(
+            db=db_session,
+            id_esecuzione=id_exec,
+            id_file=id_file,
+            id_riga_input=row_ids[0],
+            output="timeout",
+            tempo_esecuzione=5.0,
+            stato="Errore",
+        )
+        replay = save_result(
+            db=db_session,
+            id_esecuzione=id_exec,
+            id_file=id_file,
+            id_riga_input=row_ids[0],
+            output="risposta recuperata",
+            tempo_esecuzione=1.5,
+            stato="Completato",
+        )
+
+        results = db_session.query(Risultato).filter_by(
+            id_esecuzione=id_exec,
+            id_riga_input=row_ids[0],
+        ).all()
+        assert len(results) == 1
+        assert replay.id_risultato == first.id_risultato
+        assert results[0].output == "risposta recuperata"
+        assert results[0].tempo_esecuzione == pytest.approx(1.5)
+        assert results[0].stato == "Completato"
+
+    def test_replay_rejects_different_file(self, db_session):
+        """La stessa esecuzione/riga non può essere riassegnata a un altro file."""
+        id_exec = self._setup_execution(db_session)
+        id_file, row_ids = _input_keys(db_session, id_exec)
+
+        save_result(
+            db=db_session,
+            id_esecuzione=id_exec,
+            id_file=id_file,
+            id_riga_input=row_ids[0],
+            output="prima risposta",
+            tempo_esecuzione=1.0,
+            stato="Completato",
+        )
+
+        with pytest.raises(ValueError, match="id_file diverso"):
+            save_result(
+                db=db_session,
+                id_esecuzione=id_exec,
+                id_file=id_file + 1,
+                id_riga_input=row_ids[0],
+                output="risposta incoerente",
+                tempo_esecuzione=2.0,
+                stato="Completato",
+            )
 
 
 class TestSetExecutionStatus:
