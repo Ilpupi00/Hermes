@@ -39,6 +39,13 @@ class TestConfigDefaults:
         assert isinstance(MAX_RETRIES, int)
         assert MAX_RETRIES >= 0
 
+    def test_orphan_grace_default(self):
+        """La finestra di pubblicazione deve essere un intero non negativo."""
+        from src.core.config import ORPHAN_GRACE_SECONDS
+
+        assert isinstance(ORPHAN_GRACE_SECONDS, int)
+        assert ORPHAN_GRACE_SECONDS >= 0
+
     def test_db_host_default(self):
         """DB_HOST deve avere un default non vuoto."""
         from src.core.config import DB_HOST

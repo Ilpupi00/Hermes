@@ -29,6 +29,9 @@ POLL_INTERVAL = int(os.getenv("HERMES_POLL_INTERVAL", "60"))
 CHUNK_SIZE = int(os.getenv("HERMES_CHUNK_SIZE", "1000"))
 MAX_WORKERS = int(os.getenv("HERMES_MAX_WORKERS", "4"))
 MAX_RETRIES = int(os.getenv("HERMES_MAX_RETRIES", "3"))
+ORPHAN_GRACE_SECONDS = max(
+    0, int(os.getenv("HERMES_ORPHAN_GRACE_SECONDS", "300"))
+)
 
 DB_HOST = os.getenv("DB_HOST", "localhost")
 DB_NAME = os.getenv("DB_NAME", "postgres")

@@ -224,6 +224,7 @@ class TestStartHermes:
 
         with patch("src.gui.routes.control.threading.Thread") as mock_thread_cls, \
              patch("src.gui.routes.control.hermes_main.Dispatcher") as mock_disp_cls, \
+             patch("src.gui.routes.control.hermes_main.reconcile_jobs") as reconcile, \
              patch("src.gui.routes.control.config.init_directories"):
 
             mock_thread = MagicMock()
@@ -233,6 +234,7 @@ class TestStartHermes:
             r = client.post("/api/start", json={"workers": 4, "interval": 60})
 
         assert r.json()["status"] == "started"
+        reconcile.assert_called_once_with()
         mock_thread.start.assert_called_once()
 
 

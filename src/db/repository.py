@@ -1,6 +1,8 @@
 from datetime import UTC, datetime
+from dataclasses import dataclass
 import json
 
+from sqlalchemy import case, func
 from sqlalchemy.orm import Session
 from .models import (
     Esecuzione,
@@ -12,7 +14,19 @@ from .models import (
     Task,
     Utente,
 )
-from .status import JobStatus
+from .status import JobStatus, ResultStatus
+
+
+@dataclass(frozen=True)
+class ExecutionReconciliationState:
+    """Dati minimi necessari per riconciliare database e filesystem."""
+
+    execution_id: int
+    file_id: int | None
+    status: JobStatus
+    total_rows: int
+    created_at: datetime
+    completed_results: int
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Execution context (usato dal HybridWorker)
@@ -130,6 +144,75 @@ def get_input_row_ids(
             f"Righe input mancanti per file {id_file}: {missing}"
         )
     return result
+
+
+def _reconciliation_query(db: Session):
+    return (
+        db.query(
+            Esecuzione.id_esecuzione,
+            Esecuzione.id_file,
+            Esecuzione.stato,
+            Esecuzione.totale_righe,
+            func.coalesce(FileCSV.data_caricamento, Task.data_creazione).label(
+                "created_at"
+            ),
+            func.count(
+                case(
+                    (
+                        Risultato.stato == ResultStatus.COMPLETED.value,
+                        Risultato.id_risultato,
+                    )
+                )
+            ).label("completed_results"),
+        )
+        .join(Task, Esecuzione.id_task == Task.id_task)
+        .outerjoin(FileCSV, Esecuzione.id_file == FileCSV.id_file)
+        .outerjoin(Risultato, Risultato.id_esecuzione == Esecuzione.id_esecuzione)
+        .group_by(
+            Esecuzione.id_esecuzione,
+            Esecuzione.id_file,
+            Esecuzione.stato,
+            Esecuzione.totale_righe,
+            FileCSV.data_caricamento,
+            Task.data_creazione,
+        )
+    )
+
+
+def _to_reconciliation_state(row) -> ExecutionReconciliationState:
+    return ExecutionReconciliationState(
+        execution_id=int(row.id_esecuzione),
+        file_id=int(row.id_file) if row.id_file is not None else None,
+        status=JobStatus(row.stato),
+        total_rows=int(row.totale_righe),
+        created_at=row.created_at,
+        completed_results=int(row.completed_results),
+    )
+
+
+def get_execution_reconciliation_state(
+    db: Session, id_esecuzione: int
+) -> ExecutionReconciliationState | None:
+    """Restituisce lo stato compatto di una singola esecuzione."""
+    row = _reconciliation_query(db).filter(
+        Esecuzione.id_esecuzione == id_esecuzione
+    ).one_or_none()
+    return _to_reconciliation_state(row) if row else None
+
+
+def get_active_execution_reconciliation_states(
+    db: Session,
+) -> list[ExecutionReconciliationState]:
+    """Elenca i job non terminali che devono possedere un file recuperabile."""
+    active_statuses = (
+        JobStatus.QUEUED.value,
+        JobStatus.RUNNING.value,
+        JobStatus.DEFERRED.value,
+    )
+    rows = _reconciliation_query(db).filter(
+        Esecuzione.stato.in_(active_statuses)
+    ).all()
+    return [_to_reconciliation_state(row) for row in rows]
 
 
 def save_result(
