@@ -10,6 +10,7 @@ from .core import config
 from .core.watcher import get_next_file
 from .core.mover import move_file
 from .core.job_file import parse_job_filename
+from .core.reconciliation import reconcile_jobs
 from .core.reader import read_chunks
 from .workers.dispatcher import Dispatcher
 from .workers.worker_base import FatalWorkerError
@@ -213,38 +214,8 @@ def process_inbox():
     file_monitor_pool.submit(_process_file_blocking, target_file)
 
 def recover_interrupted_jobs():
-    """Riporta in INBOX i file rimasti in processing o interrotti."""
-    config.logger.info("status=recovering_jobs from=INTERRUPTED,PROCESSING to=INBOX")
-
-    for source, source_name in (
-        (config.PROCESSING, "processing"),
-        (config.INTERRUPTED, "interrupted"),
-    ):
-        for file_path in source.glob("*.csv"):
-            try:
-                ids = parse_job_filename(file_path.name)
-            except ValueError as error:
-                config.logger.error(
-                    f"status=recovery_invalid_filename file={file_path.name} "
-                    f"reason='{error}'"
-                )
-                move_file(file_path, config.FAILED)
-                continue
-
-            try:
-                move_file(file_path, config.INBOX)
-                with SessionLocal() as db:
-                    repository.set_task_status_by_execution(
-                        db, ids.execution_id, JobStatus.QUEUED.value
-                    )
-                    db.commit()
-                config.logger.info(
-                    f"status=recovered_from_{source_name} file={file_path.name}"
-                )
-            except Exception as error:
-                config.logger.error(
-                    f"Errore recupero file {file_path.name}: {error}"
-                )
+    """Alias temporaneo mantenuto per compatibilità con integrazioni esistenti."""
+    return reconcile_jobs()
 
 def main():
     global dispatcher
@@ -268,8 +239,8 @@ def main():
     config.logger.info(f"status=starting hermes_scheduler workers={config.MAX_WORKERS}")
     config.init_directories()
     
-    # Riporta in INBOX eventuali job rimasti a metà o falliti prima dell'avvio
-    recover_interrupted_jobs()
+    # Riconcilia record e file prima di accettare nuovi job.
+    reconcile_jobs()
     
     dispatcher = None
     try:

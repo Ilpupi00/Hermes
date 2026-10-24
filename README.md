@@ -338,6 +338,7 @@ All settings are loaded from environment variables or a `.env` file in the proje
 | `HERMES_CHUNK_SIZE`           | `1000`                | Number of rows per chunk (Pandas chunksize)         |
 | `HERMES_MAX_WORKERS`          | `4`                   | Max parallel threads in the ThreadPoolExecutor      |
 | `HERMES_MAX_RETRIES`          | `3`                   | Max retry attempts before moving to failed          |
+| `HERMES_ORPHAN_GRACE_SECONDS` | `300`                 | Grace period before failing a DB job without a file |
 | `HERMES_WORKER_CLASS`         | `src.workers.hybrid_worker.HybridWorker` | Worker import path              |
 | `HERMES_AI_BASE_URL`          | local URL             | Endpoint for an OpenAI-compatible local server      |
 
@@ -431,6 +432,12 @@ only files left in `processing` or `interrupted`; completed files in
 `processed` are never replayed. If recovery reprocesses rows that had already
 been persisted before a crash, Hermes updates the existing result identified
 by `(id_esecuzione, id_riga_input)` instead of inserting a duplicate.
+
+Before the scheduler starts, reconciliation also quarantines malformed or
+database-less CSV files, repairs safe status/location mismatches, and marks
+active database records without any recoverable file as failed after
+`HERMES_ORPHAN_GRACE_SECONDS`. The grace period prevents a false orphan while
+an upstream webapp is between its database commit and atomic `.part` rename.
 
 ---
 
@@ -572,6 +579,7 @@ they must be updated when tests or source modules change.
 - [x] Split active `processing` storage from the successful `processed` archive
 - [x] Formalize the PostgreSQL/filesystem contract with `hermes-webapp`
 - [x] Persist replayed row results idempotently after recovery
+- [x] Reconcile orphaned jobs and safe DB/filesystem mismatches at startup
 - [ ] Benchmark and harden local inference on Apple Silicon
 
 ---

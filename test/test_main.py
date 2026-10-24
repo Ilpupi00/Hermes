@@ -215,41 +215,10 @@ class TestProcessInbox:
             for status_call in mock_status.call_args_list
         )
 
-    def test_recovery_does_not_requeue_completed_archive(self, tmp_path, monkeypatch):
-        inbox = tmp_path / "inbox"
-        processing = tmp_path / "processing"
-        archive = tmp_path / "processed"
-        interrupted = tmp_path / "interrupted"
-        for directory in (inbox, processing, archive, interrupted):
-            directory.mkdir()
+    def test_legacy_recovery_alias_delegates_to_reconciliation(self):
+        expected = MagicMock()
+        with patch("src.main.reconcile_jobs", return_value=expected) as reconcile:
+            result = main_module.recover_interrupted_jobs()
 
-        active = processing / "job_1_file_1.csv"
-        deferred = interrupted / "job_2_file_2.csv"
-        completed = archive / "job_3_file_3.csv"
-        active.write_text("active")
-        deferred.write_text("deferred")
-        completed.write_text("completed")
-
-        monkeypatch.setattr(main_module.config, "INBOX", inbox)
-        monkeypatch.setattr(main_module.config, "PROCESSING", processing)
-        monkeypatch.setattr(main_module.config, "ARCHIVE", archive)
-        monkeypatch.setattr(main_module.config, "INTERRUPTED", interrupted)
-
-        session = MagicMock()
-        session_context = MagicMock()
-        session_context.__enter__.return_value = session
-        session_context.__exit__.return_value = False
-
-        with (
-            patch("src.main.SessionLocal", return_value=session_context),
-            patch("src.main.repository.set_task_status_by_execution") as set_status,
-        ):
-            main_module.recover_interrupted_jobs()
-
-        assert (inbox / active.name).read_text() == "active"
-        assert (inbox / deferred.name).read_text() == "deferred"
-        assert completed.read_text() == "completed"
-        assert [call.args[1:] for call in set_status.call_args_list] == [
-            (1, "In attesa"),
-            (2, "In attesa"),
-        ]
+        reconcile.assert_called_once_with()
+        assert result is expected
