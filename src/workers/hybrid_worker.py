@@ -28,7 +28,7 @@ from ..core.prompt_template import PromptTemplateError, render_prompt
 from ..db.db import SessionLocal
 from ..db import repository
 from ..db.status import ResultStatus
-from .worker_base import WorkerBase, FatalWorkerError
+from .worker_base import WorkerBase, FatalWorkerError, WorkerCancelledError
 
 
 def _is_retryable_hf_error(error: BaseException) -> bool:
@@ -218,9 +218,7 @@ class HybridWorker(WorkerBase):
                         config.logger.warning(
                             f"[AI] chunk={chunk_index} INTERROTTO da Circuit Breaker"
                         )
-                        raise FatalWorkerError(
-                            "Elaborazione interrotta per attivazione Circuit Breaker."
-                        )
+                        raise WorkerCancelledError("Elaborazione del job interrotta.")
 
                     id_riga = input_row_ids[int(index)]
                     dati_riga = row.drop("id_riga_input", errors='ignore').to_dict()

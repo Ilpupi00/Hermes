@@ -11,14 +11,14 @@
 Hermes is an **independent background process** that watches a shared inbox folder, reads CSV files in memory-safe chunks, and dispatches work to a thread pool of AI workers — completely decoupled from any Web App upstream.
 
 The `v0.1.0` baseline has been verified from a clean clone with PostgreSQL,
-Alembic, Hugging Face Chat Completion and parameterized CSV prompts. The
-The `v0.1.0` suite contained 245 tests with 74% overall coverage. The current
-filesystem-contract branch contains 254 tests.
+Alembic, Hugging Face Chat Completion and parameterized CSV prompts. Its suite
+contained 245 tests with 74% overall coverage. The current development suite
+contains 275 tests.
 
 ```
 INBOX ──► processing ──► ThreadPoolExecutor ──► Generative AI API
                             (N workers)             (per-row calls)
-             └──────────► processed / failed / interrupted
+             └──────────► processed / failed / interrupted / cancelled
 ```
 
 ---
@@ -131,7 +131,7 @@ Never commit `.env` or expose its values in screenshots, logs or issues.
 ### 2. Start the Docker baseline
 
 ```bash
-mkdir -p data/uploads_web data/processing data/processed data/failed data/interrupted
+mkdir -p data/uploads_web data/processing data/processed data/failed data/interrupted data/cancelled
 docker compose up -d --build
 docker compose ps
 ```
@@ -259,7 +259,7 @@ git clone https://github.com/Ilpupi00/Hermes.git
 cd Hermes
 cp .env.example .env
 uv sync --extra dev
-mkdir -p data/uploads_web data/processing data/processed data/failed data/interrupted
+mkdir -p data/uploads_web data/processing data/processed data/failed data/interrupted data/cancelled
 docker compose up -d db
 uv run alembic upgrade head
 uv run python scripts/create_admin.py <username>
@@ -305,6 +305,7 @@ future webapp mount the same data area:
 | `processed` | Immutable holding area for successfully completed input files |
 | `failed` | Files whose processing failed |
 | `interrupted` | Files deferred during shutdown or interruption |
+| `cancelled` | Files explicitly cancelled by a user; they are never replayed |
 
 Do not place source files or permanent documentation in these directories.
 
@@ -421,7 +422,8 @@ STEP 4 — Dispatch
   └─ Wait for chunk results
   └─ Success       → move file to PROCESSED + mark job completed
   └─ Row/fatal error → move file to FAILED + mark job failed
-  └─ Shutdown interruption → move file to INTERRUPTED
+  └─ Engine stop     → move file to INTERRUPTED + mark job deferred
+  └─ User cancel     → move file to CANCELLED + mark job cancelled
 ```
 
 Upstream producers must publish files as
@@ -438,6 +440,20 @@ database-less CSV files, repairs safe status/location mismatches, and marks
 active database records without any recoverable file as failed after
 `HERMES_ORPHAN_GRACE_SECONDS`. The grace period prevents a false orphan while
 an upstream webapp is between its database commit and atomic `.part` rename.
+
+### Job cancellation and engine stop
+
+The Control Room shows **Annulla** only for queued, running or deferred jobs.
+The equivalent endpoint is `POST /api/jobs/{id_esecuzione}/cancel`. Cancellation
+is cooperative: an in-flight LLM request may finish, then the worker stops
+before the next row. Database records and any partial results are retained for
+audit and download; the input is moved to `cancelled` and is not recovered on
+restart.
+
+Stopping the whole engine has different semantics. Active jobs become
+`Rimandato`, their inputs move to `interrupted`, and startup reconciliation
+requeues them. This distinction prevents a deliberate cancellation from being
+mistaken for a temporary shutdown.
 
 ---
 
@@ -460,6 +476,8 @@ Hermes uses Python's standard `logging` library with a structured format:
 Hermes offers a hybrid desktop dashboard to visually monitor and orchestrate the system:
 
 - **Live Engine Status**: Start and stop the main polling loop.
+- **Tracked Job Cancellation**: Cooperatively cancel active or queued jobs
+  without deleting their database history or partial results.
 - **Dynamic Thread Pool Management**:
   - Add new dedicated pools (e.g., `test_llm`, `production`) specifying the number of workers.
   - Hot-swap / Rename or resize workers without restarting the engine.
@@ -580,6 +598,7 @@ they must be updated when tests or source modules change.
 - [x] Formalize the PostgreSQL/filesystem contract with `hermes-webapp`
 - [x] Persist replayed row results idempotently after recovery
 - [x] Reconcile orphaned jobs and safe DB/filesystem mismatches at startup
+- [x] Cooperative job cancellation with terminal state and retained results
 - [ ] Benchmark and harden local inference on Apple Silicon
 
 ---

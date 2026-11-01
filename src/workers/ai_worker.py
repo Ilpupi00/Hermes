@@ -14,7 +14,7 @@ from ..core.prompt_template import PromptTemplateError, render_prompt
 from ..db.db import SessionLocal
 from ..db import repository
 from ..db.status import ResultStatus
-from .worker_base import WorkerBase, FatalWorkerError
+from .worker_base import WorkerBase, FatalWorkerError, WorkerCancelledError
 
 class LocalAIWorker(WorkerBase):
     _validated_tokens = {}
@@ -61,7 +61,7 @@ class LocalAIWorker(WorkerBase):
                     cancel_event = metadata.get("cancel_event")
                     if cancel_event and cancel_event.is_set():
                         config.logger.warning(f"Process interrotto per il chunk {metadata.get('chunk_index')}")
-                        raise FatalWorkerError("Elaborazione interrotta per attivazione Circuit Breaker.")
+                        raise WorkerCancelledError("Elaborazione del job interrotta.")
 
                     id_riga = row['id_riga_input']
                     dati_riga = row.drop('id_riga_input').to_dict()

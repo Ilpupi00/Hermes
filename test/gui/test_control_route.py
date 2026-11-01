@@ -13,6 +13,8 @@ Copre:
 - POST /api/start        : avvio quando già running, avvio a freddo
 - POST /api/stop         : stop
 """
+import threading
+
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -44,10 +46,16 @@ def reset_globals():
     original_dispatcher = hermes_main.dispatcher
     original_keep_running = hermes_main.keep_running
     original_thread = state.SCHEDULER_THREAD
+    hermes_main.active_cancel_events.clear()
+    hermes_main.requested_cancellations.clear()
+    hermes_main.shutdown_interruptions.clear()
     yield
     hermes_main.dispatcher = original_dispatcher
     hermes_main.keep_running = original_keep_running
     state.SCHEDULER_THREAD = original_thread
+    hermes_main.active_cancel_events.clear()
+    hermes_main.requested_cancellations.clear()
+    hermes_main.shutdown_interruptions.clear()
 
 
 def _mock_dispatcher():
@@ -259,3 +267,13 @@ class TestStopHermes:
         hermes_main.dispatcher = None
         client.post("/api/stop")
         assert hermes_main.keep_running is False
+
+    def test_stop_interrupts_active_jobs_for_recovery(self, client):
+        event = threading.Event()
+        hermes_main.active_cancel_events[42] = event
+        hermes_main.dispatcher = None
+
+        response = client.post("/api/stop")
+
+        assert event.is_set()
+        assert response.json()["interrupted_jobs"] == 1
