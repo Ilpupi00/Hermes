@@ -13,7 +13,7 @@ from .core.job_file import parse_job_filename
 from .core.reconciliation import reconcile_jobs
 from .core.reader import read_chunks
 from .workers.dispatcher import Dispatcher
-from .workers.worker_base import FatalWorkerError
+from .workers.worker_base import FatalWorkerError, WorkerCancelledError
 from .api.health import start_health_server
 from .db.db import SessionLocal
 from .db import repository
@@ -23,11 +23,70 @@ keep_running = True
 dispatcher = None
 file_monitor_pool = concurrent.futures.ThreadPoolExecutor(max_workers=50, thread_name_prefix="FileMonitor")
 active_cancel_events = {}  # Mappa: id_esecuzione -> threading.Event
+requested_cancellations = set()
+shutdown_interruptions = set()
+_cancellation_lock = threading.RLock()
+
+
+def request_job_cancellation(job_id: int) -> bool:
+    """Registra l'annullamento e segnala l'eventuale job già attivo."""
+    with _cancellation_lock:
+        requested_cancellations.add(job_id)
+        cancel_event = active_cancel_events.get(job_id)
+        if cancel_event is not None:
+            cancel_event.set()
+            return True
+        return False
+
+
+def clear_job_cancellation(job_id: int) -> None:
+    with _cancellation_lock:
+        requested_cancellations.discard(job_id)
+
+
+def is_job_cancellation_requested(job_id: int) -> bool:
+    with _cancellation_lock:
+        return job_id in requested_cancellations
+
+
+def is_job_shutdown_interruption(job_id: int) -> bool:
+    with _cancellation_lock:
+        return job_id in shutdown_interruptions
+
+
+def interrupt_active_jobs() -> int:
+    """Interrompe i worker attivi senza trasformare lo stop in annullamento."""
+    with _cancellation_lock:
+        active = list(active_cancel_events.items())
+        shutdown_interruptions.update(job_id for job_id, _ in active)
+    for _, cancel_event in active:
+        cancel_event.set()
+    return len(active)
+
+
+def _register_active_job(job_id: int) -> threading.Event:
+    cancel_event = threading.Event()
+    with _cancellation_lock:
+        active_cancel_events[job_id] = cancel_event
+        if job_id in requested_cancellations:
+            cancel_event.set()
+        elif not keep_running:
+            shutdown_interruptions.add(job_id)
+            cancel_event.set()
+    return cancel_event
+
+
+def _unregister_active_job(job_id: int) -> None:
+    with _cancellation_lock:
+        active_cancel_events.pop(job_id, None)
+        requested_cancellations.discard(job_id)
+        shutdown_interruptions.discard(job_id)
 
 def signal_handler(sig, frame):
     global keep_running
     config.logger.info("status=shutdown_requested draining_pool=True")
     keep_running = False
+    interrupt_active_jobs()
 
 def parse_cli_args():
     """Definisce e legge gli argomenti passati da riga di comando."""
@@ -60,10 +119,26 @@ def _process_file_blocking(target_file):
         job_id = job_file_ids.execution_id
         
         chunk_futures = []
-        cancel_event = threading.Event()
-        
-        if job_id is not None:
-            active_cancel_events[job_id] = cancel_event
+        cancel_event = _register_active_job(job_id)
+
+        if cancel_event.is_set():
+            is_cancelled = is_job_cancellation_requested(job_id)
+            new_status = (
+                JobStatus.CANCELLED.value
+                if is_cancelled
+                else JobStatus.DEFERRED.value
+            )
+            target_dir = config.CANCELLED if is_cancelled else config.INTERRUPTED
+            with SessionLocal() as db:
+                repository.set_task_status_by_execution(
+                    db, job_id, new_status
+                )
+                db.commit()
+            move_file(processing_file, target_dir)
+            config.logger.info(
+                f"job={job_id} status={new_status} before_dispatch=True"
+            )
+            return
             
         # Determiniamo il pool di destinazione recuperando il modello dal DB
         target_pool = "default"
@@ -104,6 +179,7 @@ def _process_file_blocking(target_file):
             chunk_futures.append(future)
         
         has_fatal_error = False
+        was_interrupted = False
         has_row_errors = False
         
         for future in concurrent.futures.as_completed(chunk_futures):
@@ -114,6 +190,14 @@ def _process_file_blocking(target_file):
                     and chunk_result.get("error_rows", 0) > 0
                 ):
                     has_row_errors = True
+            except WorkerCancelledError as error:
+                config.logger.info(
+                    f"file={processing_file.name} status=interrupted "
+                    f"reason='{str(error)}'"
+                )
+                was_interrupted = True
+                cancel_event.set()
+                break
             except FatalWorkerError as fe:
                 config.logger.critical(f"status=CIRCUIT_BREAKER file={processing_file.name} reason='{str(fe)}'")
                 has_fatal_error = True
@@ -125,16 +209,25 @@ def _process_file_blocking(target_file):
                 cancel_event.set()
                 break
 
-        if has_fatal_error:
+        if is_job_cancellation_requested(job_id):
+            was_interrupted = True
+
+        if has_fatal_error or was_interrupted:
             for f in chunk_futures:
                 f.cancel()
-            
-            # Se stiamo spegnendo Hermes, è una sospensione (Rimandato), non un Fallito vero
-            is_shutdown = not keep_running
-            new_status = (
-                JobStatus.DEFERRED.value if is_shutdown else JobStatus.FAILED.value
-            )
-            target_dir = config.INTERRUPTED if is_shutdown else config.FAILED
+
+            # Un annullamento utente è terminale; lo stop del motore è recuperabile.
+            is_cancelled = is_job_cancellation_requested(job_id)
+            is_shutdown = is_job_shutdown_interruption(job_id) or not keep_running
+            if is_cancelled:
+                new_status = JobStatus.CANCELLED.value
+                target_dir = config.CANCELLED
+            elif is_shutdown:
+                new_status = JobStatus.DEFERRED.value
+                target_dir = config.INTERRUPTED
+            else:
+                new_status = JobStatus.FAILED.value
+                target_dir = config.FAILED
             
             if job_id is not None:
                 try:
@@ -184,11 +277,24 @@ def _process_file_blocking(target_file):
     except Exception as e:
         config.logger.error(f"file={processing_file.name} status=failed_processing error={str(e)}")
         
-        is_shutdown = not keep_running
-        new_status = (
-            JobStatus.DEFERRED.value if is_shutdown else JobStatus.FAILED.value
+        is_cancelled = (
+            'job_id' in locals()
+            and job_id is not None
+            and is_job_cancellation_requested(job_id)
         )
-        target_dir = config.INTERRUPTED if is_shutdown else config.FAILED
+        is_shutdown = (
+            ('job_id' in locals() and is_job_shutdown_interruption(job_id))
+            or not keep_running
+        )
+        if is_cancelled:
+            new_status = JobStatus.CANCELLED.value
+            target_dir = config.CANCELLED
+        elif is_shutdown:
+            new_status = JobStatus.DEFERRED.value
+            target_dir = config.INTERRUPTED
+        else:
+            new_status = JobStatus.FAILED.value
+            target_dir = config.FAILED
         
         if 'job_id' in locals() and job_id is not None:
             try:
@@ -201,7 +307,7 @@ def _process_file_blocking(target_file):
         move_file(processing_file, target_dir)
     finally:
         if 'job_id' in locals() and job_id is not None:
-            active_cancel_events.pop(job_id, None)
+            _unregister_active_job(job_id)
 
 def process_inbox():
     """Il Job che lo scheduler eseguirà ciclicamente."""

@@ -24,6 +24,7 @@ FAILED = Path(os.getenv("HERMES_FAILED", str(DATA_ROOT / "failed")))
 INTERRUPTED = Path(
     os.getenv("HERMES_INTERRUPTED", str(DATA_ROOT / "interrupted"))
 )
+CANCELLED = Path(os.getenv("HERMES_CANCELLED", str(DATA_ROOT / "cancelled")))
 
 POLL_INTERVAL = int(os.getenv("HERMES_POLL_INTERVAL", "60"))
 CHUNK_SIZE = int(os.getenv("HERMES_CHUNK_SIZE", "1000"))
@@ -56,5 +57,12 @@ WORKER_CLASS = os.getenv("HERMES_WORKER_CLASS", "src.workers.hybrid_worker.Hybri
 
 
 def init_directories():
-    for directory in [INBOX, PROCESSING, ARCHIVE, FAILED, INTERRUPTED]:
+    for directory in [
+        INBOX,
+        PROCESSING,
+        ARCHIVE,
+        FAILED,
+        INTERRUPTED,
+        CANCELLED,
+    ]:
         directory.mkdir(parents=True,exist_ok=True)

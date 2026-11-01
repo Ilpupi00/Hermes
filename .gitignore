@@ -16,6 +16,7 @@ processing/
 processed/
 failed/
 interrupted/
+cancelled/
 pending/
 archive/
 data/

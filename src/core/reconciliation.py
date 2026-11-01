@@ -103,7 +103,13 @@ def _reconcile_visible_files(db, stats: ReconciliationStats) -> None:
                     stats.recovered += 1
                 continue
 
-            if state.status in {JobStatus.FAILED, JobStatus.CANCELLED}:
+            if state.status == JobStatus.CANCELLED:
+                if source != config.CANCELLED:
+                    _move_lifecycle(path, config.CANCELLED, "cancelled")
+                    stats.recovered += 1
+                continue
+
+            if state.status == JobStatus.FAILED:
                 if source != config.FAILED:
                     _move_lifecycle(path, config.FAILED, "terminal")
                     stats.quarantined += 1
@@ -157,6 +163,7 @@ def _reconcile_active_records(
             active_paths: list[Path] = []
             archived_path = None
             failed_path = None
+            cancelled_path = None
             staging_paths: list[Path] = []
         else:
             filename = build_job_filename(state.execution_id, state.file_id)
@@ -171,6 +178,7 @@ def _reconcile_active_records(
             ]
             archived_path = config.ARCHIVE / filename
             failed_path = config.FAILED / filename
+            cancelled_path = config.CANCELLED / filename
             staging_paths = _staging_files(filename)
 
         if active_paths:
@@ -194,6 +202,11 @@ def _reconcile_active_records(
 
         if failed_path is not None and failed_path.exists():
             _commit_status(db, state.execution_id, JobStatus.FAILED)
+            stats.statuses_fixed += 1
+            continue
+
+        if cancelled_path is not None and cancelled_path.exists():
+            _commit_status(db, state.execution_id, JobStatus.CANCELLED)
             stats.statuses_fixed += 1
             continue
 

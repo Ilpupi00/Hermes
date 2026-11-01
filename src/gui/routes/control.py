@@ -121,6 +121,8 @@ async def start_hermes(params: StartParams):
 async def stop_hermes():
     # Chiude in modo "grazioso" (Graceful Shutdown)
     hermes_main.keep_running = False
+    interrupted_jobs = hermes_main.interrupt_active_jobs()
     if hermes_main.dispatcher:
         hermes_main.dispatcher.shutdown()
-    return {"status": "stopped"}
+    hermes_main.dispatcher = None
+    return {"status": "stopped", "interrupted_jobs": interrupted_jobs}

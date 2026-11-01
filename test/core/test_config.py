@@ -66,6 +66,7 @@ class TestConfigDefaults:
             ARCHIVE,
             FAILED,
             INTERRUPTED,
+            CANCELLED,
         )
         assert isinstance(DATA_ROOT, Path)
         assert isinstance(INBOX, Path)
@@ -73,6 +74,7 @@ class TestConfigDefaults:
         assert isinstance(ARCHIVE, Path)
         assert isinstance(FAILED, Path)
         assert isinstance(INTERRUPTED, Path)
+        assert isinstance(CANCELLED, Path)
 
     def test_local_ai_base_url_default(self):
         """LOCAL_AI_BASE_URL deve iniziare con 'http'."""
@@ -96,6 +98,7 @@ class TestInitDirectories:
         archive = tmp_path / "archive"
         failed = tmp_path / "failed"
         interrupted = tmp_path / "interrupted"
+        cancelled = tmp_path / "cancelled"
 
         # Sostituiamo le variabili globali con i percorsi temporanei
         import src.core.config as cfg
@@ -104,6 +107,7 @@ class TestInitDirectories:
         monkeypatch.setattr(cfg, "ARCHIVE", archive)
         monkeypatch.setattr(cfg, "FAILED", failed)
         monkeypatch.setattr(cfg, "INTERRUPTED", interrupted)
+        monkeypatch.setattr(cfg, "CANCELLED", cancelled)
 
         cfg.init_directories()
 
@@ -112,6 +116,7 @@ class TestInitDirectories:
         assert archive.is_dir()
         assert failed.is_dir()
         assert interrupted.is_dir()
+        assert cancelled.is_dir()
 
     def test_idempotent_when_dirs_exist(self, tmp_path, monkeypatch):
         """Se le directory esistono già, init_directories non deve sollevare eccezioni."""
@@ -120,11 +125,13 @@ class TestInitDirectories:
         archive = tmp_path / "archive"
         failed = tmp_path / "failed"
         interrupted = tmp_path / "interrupted"
+        cancelled = tmp_path / "cancelled"
         inbox.mkdir()
         processing.mkdir()
         archive.mkdir()
         failed.mkdir()
         interrupted.mkdir()
+        cancelled.mkdir()
 
         import src.core.config as cfg
         monkeypatch.setattr(cfg, "INBOX", inbox)
@@ -132,6 +139,7 @@ class TestInitDirectories:
         monkeypatch.setattr(cfg, "ARCHIVE", archive)
         monkeypatch.setattr(cfg, "FAILED", failed)
         monkeypatch.setattr(cfg, "INTERRUPTED", interrupted)
+        monkeypatch.setattr(cfg, "CANCELLED", cancelled)
 
         # Non deve sollevare FileExistsError
         cfg.init_directories()

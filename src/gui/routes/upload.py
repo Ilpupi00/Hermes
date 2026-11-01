@@ -4,6 +4,7 @@ Route API per l'upload e l'esecuzione di job CSV in Hermes.
 Endpoints:
   POST /api/upload           → carica un CSV, crea Task+Esecuzione, deposita in INBOX
   GET  /api/jobs             → lista tutte le esecuzioni con stato aggregato
+  POST /api/jobs/{id}/cancel → annulla un job conservando record e risultati
   GET  /api/jobs/{id}/results → risultati di una esecuzione specifica (paginati)
 """
 
@@ -23,6 +24,7 @@ from ...db.models import Utente, Task, Esecuzione, Risultato, ModelloLLM
 from ...db.status import JobStatus, ResultStatus
 from ...core import config
 from ...core.job_file import build_job_filename
+from ...core.mover import move_file
 from ...core.prompt_template import PromptTemplateError, validate_prompt_data
 from ... import main as hermes_main
 
@@ -305,40 +307,107 @@ async def list_jobs():
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# GET /api/jobs/{id_esecuzione}/results — Risultati di una esecuzione
+# POST /api/jobs/{id_esecuzione}/cancel — Annullamento cooperativo
 # ─────────────────────────────────────────────────────────────────────────────
 
-@router.delete("/jobs/{job_id}")
-def delete_job(job_id: int):
-    """Elimina definitivamente un job (Task, Esecuzione, Risultati) dal database e ferma l'elaborazione se in corso."""
-    
-    # 1. Se il job è attualmente in elaborazione, mandiamo il segnale di aborto ai thread
-    if hasattr(hermes_main, "active_cancel_events"):
-        cancel_event = hermes_main.active_cancel_events.get(job_id)
-        if cancel_event:
-            cancel_event.set()
-            config.logger.warning(f"status=JOB_CANCELLED job_id={job_id} Segnale di terminazione forzata inviato.")
-
+@router.post("/jobs/{job_id}/cancel", status_code=202)
+def cancel_job(job_id: int):
+    """Annulla un job conservandone record e risultati già prodotti."""
     with SessionLocal() as db:
-        esecuzione = db.query(Esecuzione).filter(Esecuzione.id_esecuzione == job_id).first()
+        esecuzione = (
+            db.query(Esecuzione)
+            .filter(Esecuzione.id_esecuzione == job_id)
+            .first()
+        )
         if not esecuzione:
             raise HTTPException(status_code=404, detail="Job non trovato")
-        
+
+        current_status = JobStatus(esecuzione.stato)
+        if current_status == JobStatus.CANCELLED:
+            return {
+                "status": "cancelled",
+                "job_id": job_id,
+                "message": "Job già annullato",
+            }
+        if current_status in {JobStatus.COMPLETED, JobStatus.FAILED}:
+            raise HTTPException(
+                status_code=409,
+                detail=f"Il job è già terminale ({current_status.value})",
+            )
+
+        is_active = hermes_main.request_job_cancellation(job_id)
+        if is_active:
+            config.logger.info(
+                f"job={job_id} status=cancellation_requested active=True"
+            )
+            return {
+                "status": "cancellation_requested",
+                "job_id": job_id,
+                "message": "Annullamento richiesto al worker attivo",
+            }
+
+        filename = (
+            build_job_filename(job_id, esecuzione.id_file)
+            if esecuzione.id_file is not None
+            else None
+        )
+        if filename:
+            source = next(
+                (
+                    directory / filename
+                    for directory in (config.INBOX, config.INTERRUPTED)
+                    if (directory / filename).exists()
+                ),
+                None,
+            )
+            if source is not None:
+                config.CANCELLED.mkdir(parents=True, exist_ok=True)
+                try:
+                    move_file(source, config.CANCELLED)
+                except FileNotFoundError:
+                    if (config.PROCESSING / filename).exists():
+                        return {
+                            "status": "cancellation_requested",
+                            "job_id": job_id,
+                            "message": "Annullamento richiesto al job in elaborazione",
+                        }
+                    if not (config.CANCELLED / filename).exists():
+                        hermes_main.clear_job_cancellation(job_id)
+                        raise
+            elif (config.PROCESSING / filename).exists():
+                # Il claim può precedere di pochi istanti la registrazione
+                # dell'evento: la richiesta resta memorizzata per il worker.
+                config.logger.info(
+                    f"job={job_id} status=cancellation_requested active=pending_registration"
+                )
+                return {
+                    "status": "cancellation_requested",
+                    "job_id": job_id,
+                    "message": "Annullamento richiesto al job in elaborazione",
+                }
+
         try:
-            # 1. Elimina risultati
-            db.query(Risultato).filter(Risultato.id_esecuzione == job_id).delete(synchronize_session=False)
-            # 2. Elimina esecuzione
-            task_id = esecuzione.id_task
-            db.query(Esecuzione).filter(Esecuzione.id_esecuzione == job_id).delete(synchronize_session=False)
-            # 3. Elimina task
-            if task_id:
-                db.query(Task).filter(Task.id_task == task_id).delete(synchronize_session=False)
-            
+            repository.set_task_status_by_execution(
+                db, job_id, JobStatus.CANCELLED.value
+            )
             db.commit()
-            return {"status": "ok", "message": "Job eliminato"}
-        except Exception as e:
+        except Exception:
             db.rollback()
-            raise HTTPException(status_code=500, detail=f"Errore durante l'eliminazione: {str(e)}")
+            hermes_main.clear_job_cancellation(job_id)
+            raise
+
+        hermes_main.clear_job_cancellation(job_id)
+        config.logger.info(f"job={job_id} status=cancelled active=False")
+        return {
+            "status": "cancelled",
+            "job_id": job_id,
+            "message": "Job annullato",
+        }
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# GET /api/jobs/{id_esecuzione}/results — Risultati di una esecuzione
+# ─────────────────────────────────────────────────────────────────────────────
 
 @router.get("/jobs/{id_esecuzione}/results")
 async def get_job_results(id_esecuzione: int, limit: int = 200, offset: int = 0):

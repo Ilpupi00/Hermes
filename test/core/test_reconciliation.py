@@ -23,6 +23,7 @@ def lifecycle(tmp_path, monkeypatch):
         "archive": tmp_path / "processed",
         "failed": tmp_path / "failed",
         "interrupted": tmp_path / "interrupted",
+        "cancelled": tmp_path / "cancelled",
     }
     for directory in directories.values():
         directory.mkdir()
@@ -37,6 +38,9 @@ def lifecycle(tmp_path, monkeypatch):
     monkeypatch.setattr(reconciliation.config, "FAILED", directories["failed"])
     monkeypatch.setattr(
         reconciliation.config, "INTERRUPTED", directories["interrupted"]
+    )
+    monkeypatch.setattr(
+        reconciliation.config, "CANCELLED", directories["cancelled"]
     )
     monkeypatch.setattr(reconciliation.config, "ORPHAN_GRACE_SECONDS", 300)
     return directories
@@ -282,3 +286,30 @@ def test_failed_file_repairs_active_database_status(
     assert failed.is_file()
     assert execution.stato == JobStatus.FAILED.value
     assert task.stato == JobStatus.FAILED.value
+
+
+def test_cancelled_job_file_is_not_replayed(reconciler_db, lifecycle):
+    task, _, execution = _create_job(reconciler_db, JobStatus.CANCELLED)
+    source = lifecycle["interrupted"] / _canonical(execution)
+    source.write_text("review\ncancelled\n", encoding="utf-8")
+
+    reconciliation.reconcile_jobs(now=NOW)
+
+    assert (lifecycle["cancelled"] / source.name).is_file()
+    assert not (lifecycle["inbox"] / source.name).exists()
+    assert execution.stato == JobStatus.CANCELLED.value
+    assert task.stato == JobStatus.CANCELLED.value
+
+
+def test_cancelled_file_repairs_active_database_status(
+    reconciler_db, lifecycle
+):
+    task, _, execution = _create_job(reconciler_db, JobStatus.RUNNING)
+    cancelled = lifecycle["cancelled"] / _canonical(execution)
+    cancelled.write_text("review\ncancelled\n", encoding="utf-8")
+
+    reconciliation.reconcile_jobs(now=NOW)
+
+    assert cancelled.is_file()
+    assert execution.stato == JobStatus.CANCELLED.value
+    assert task.stato == JobStatus.CANCELLED.value
