@@ -110,6 +110,8 @@ def test_upload_persists_file_rows_and_execution_link(db_session, tmp_path):
     assert file_csv.numero_righe == 3
     assert execution.id_file == file_csv.id_file
     assert execution.totale_righe == 3
+    assert execution.chunk_size == payload["chunk_size"]
+    assert execution.chunk_size == 1
     assert [row.indice_riga for row in rows] == [0, 1, 2]
     assert '"review": "ottimo"' in rows[0].contenuto
     assert len(mappings) == 1
@@ -117,6 +119,32 @@ def test_upload_persists_file_rows_and_execution_link(db_session, tmp_path):
     assert mappings[0].colonna_csv == "review"
     assert (inbox / payload["filename"]).read_bytes().startswith(b"id,review")
     assert not list(inbox.glob("*.part"))
+
+
+def test_upload_rejects_non_positive_chunk_size(tmp_path):
+    app = FastAPI()
+    app.include_router(router)
+    client = TestClient(app)
+
+    response = client.post(
+        "/api/upload",
+        data={
+            "id_modello": "1",
+            "prompt": "Classifica {review}.",
+            "chunk_size": "0",
+        },
+        files={
+            "file": (
+                "reviews.csv",
+                b"review\nottimo\n",
+                "text/csv",
+            )
+        },
+    )
+
+    assert response.status_code == 422
+    assert response.json()["detail"] == "chunk_size deve essere almeno 1"
+    assert not (tmp_path / "inbox").exists()
 
 
 @pytest.mark.parametrize(

@@ -143,11 +143,13 @@ def _process_file_blocking(target_file):
         # Determiniamo il pool di destinazione recuperando il modello dal DB
         target_pool = "default"
         modello_nome = "default"
+        chunk_size = config.CHUNK_SIZE
         if job_id is not None:
             try:
                 with SessionLocal() as db:
                     ctx = repository.get_execution_context(db, job_id)
                     modello_nome = ctx.get("nome_modello", "default")
+                    chunk_size = ctx.get("chunk_size", config.CHUNK_SIZE)
                     target_pool = dispatcher.get_route(modello_nome)
             except Exception as e:
                 config.logger.error(f"status=CIRCUIT_BREAKER file={processing_file.name} reason='Errore DB: Esecuzione {job_id} non trovata. File orfano.'")
@@ -168,7 +170,11 @@ def _process_file_blocking(target_file):
             except Exception:
                 pass
 
-        for idx, chunk in enumerate(read_chunks(processing_file, config.CHUNK_SIZE)):
+        config.logger.info(
+            f"file={processing_file.name} chunk_size={chunk_size} "
+            "status=chunking_started"
+        )
+        for idx, chunk in enumerate(read_chunks(processing_file, chunk_size)):
             metadata = {
                 "filename": processing_file.name, 
                 "chunk_index": idx,

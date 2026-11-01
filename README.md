@@ -336,10 +336,15 @@ All settings are loaded from environment variables or a `.env` file in the proje
 | `HF_INFERENCE_PROVIDER`       | `featherless-ai`      | Provider Hugging Face per i modelli remoti iniziali |
 | `HERMES_DATA_ROOT`            | `./data`              | Shared root containing all CSV lifecycle folders     |
 | `HERMES_POLL_INTERVAL`        | `60`                  | Seconds between each scan of the inbox              |
-| `HERMES_CHUNK_SIZE`           | `1000`                | Number of rows per chunk (Pandas chunksize)         |
+| `HERMES_CHUNK_SIZE`           | `1000`                | Fallback/default rows per chunk for legacy jobs     |
 | `HERMES_MAX_WORKERS`          | `4`                   | Max parallel threads in the ThreadPoolExecutor      |
 | `HERMES_MAX_RETRIES`          | `3`                   | Max retry attempts before moving to failed          |
 | `HERMES_ORPHAN_GRACE_SECONDS` | `300`                 | Grace period before failing a DB job without a file |
+
+The upload value is treated as the requested maximum. Hermes may lower it to
+keep the configured workers supplied, then persists that effective value on
+the execution. The scheduler always uses the persisted value; the environment
+setting remains the default and a compatibility fallback for legacy jobs.
 | `HERMES_WORKER_CLASS`         | `src.workers.hybrid_worker.HybridWorker` | Worker import path              |
 | `HERMES_AI_BASE_URL`          | local URL             | Endpoint for an OpenAI-compatible local server      |
 
@@ -413,7 +418,8 @@ STEP 2 — Claim File
   └─ Move failed?     →  log + skip            →  back to STEP 1
 
 STEP 3 — Chunked Read
-  └─ pd.read_csv(PROCESSING/file.csv, chunksize=CHUNK_SIZE)
+  └─ Load the job-specific effective chunk size from PostgreSQL
+  └─ pd.read_csv(PROCESSING/file.csv, chunksize=execution.chunk_size)
   └─ Parse error?     →  move to FAILED        →  back to STEP 1
 
 STEP 4 — Dispatch

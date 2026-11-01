@@ -181,6 +181,33 @@ class TestProcessInbox:
         assert mock_move.call_args_list[0].args[1] == main_module.config.PROCESSING
         assert mock_move.call_args_list[1].args[1] == main_module.config.ARCHIVE
 
+    def test_processing_uses_execution_chunk_size(self):
+        """Il chunk size persistito sul job prevale sul default globale."""
+        self._setup_dispatcher()
+        fake_file = Path("job_1_file_1.csv")
+        processing = Path("processing") / fake_file.name
+        mock_future = MagicMock()
+        mock_future.result.return_value = {"status": "ok"}
+
+        import pandas as pd
+        fake_chunk = pd.DataFrame({"a": [1]})
+
+        with patch("src.main.get_next_file", return_value=fake_file), \
+             patch("src.main.move_file", return_value=processing), \
+             patch("src.main.read_chunks", return_value=iter([fake_chunk])) as mock_read, \
+             patch("src.main.dispatcher") as mock_disp, \
+             patch("src.main.repository.get_execution_context", return_value={
+                 "nome_modello": "test-model",
+                 "chunk_size": 15,
+             }), \
+             patch("src.main.repository.set_task_status_by_execution"), \
+             patch("src.main.concurrent.futures.as_completed", return_value=iter([mock_future])), \
+             patch("src.main.file_monitor_pool.submit", side_effect=lambda fn, arg: fn(arg)):
+            mock_disp.submit_chunk.return_value = mock_future
+            main_module.process_inbox()
+
+        mock_read.assert_called_once_with(processing, 15)
+
     def test_row_errors_mark_job_failed_and_move_file(self):
         """Risultati di riga in errore non devono produrre un falso successo."""
         self._setup_dispatcher()

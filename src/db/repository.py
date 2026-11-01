@@ -44,6 +44,7 @@ def get_execution_context(db: Session, id_esecuzione: int) -> dict:
             Task.max_tokens,
             Esecuzione.id_task,
             Esecuzione.id_file,
+            Esecuzione.chunk_size,
         )
         .select_from(Esecuzione)
         .join(Task, Esecuzione.id_task == Task.id_task)
@@ -76,6 +77,7 @@ def get_execution_context(db: Session, id_esecuzione: int) -> dict:
         "max_tokens":   result.max_tokens  if result.max_tokens  is not None else 500,
         "prompt_mapping": prompt_mapping,
         "id_file":      result.id_file,
+        "chunk_size":   result.chunk_size,
     }
 
 

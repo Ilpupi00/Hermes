@@ -99,6 +99,7 @@ class TestGetExecutionContext:
         assert ctx["temperatura"] == pytest.approx(0.3)
         assert ctx["max_tokens"] == 512
         assert ctx["id_file"] is not None
+        assert ctx["chunk_size"] == 1000
 
     def test_raises_for_nonexistent_execution(self, db_session):
         """Se l'id_esecuzione non esiste, deve sollevare ValueError."""
