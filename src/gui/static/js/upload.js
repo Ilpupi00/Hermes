@@ -227,7 +227,7 @@ function renderUploadResult(data) {
         <span class="urb-icon">${data.hermes_running ? '✓' : '⚠'}</span>
         <div>
             <strong>Job #${data.id_esecuzione}</strong> — ${data.modello} (${data.tipo})
-            <br><small>${data.message}</small>
+            <br><small>${data.message} Chunk size effettivo: ${data.chunk_size}.</small>
         </div>
         <button class="btn btn-sm btn-ghost" onclick="openJobResults(${data.id_esecuzione})">
             Vedi risultati →

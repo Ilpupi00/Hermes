@@ -72,6 +72,8 @@ async def upload_csv(
     # ── Validazione preliminare ───────────────────────────────────────────────
     if not file.filename or not file.filename.lower().endswith(".csv"):
         raise HTTPException(status_code=400, detail="Il file deve essere un CSV (.csv)")
+    if chunk_size < 1:
+        raise HTTPException(status_code=422, detail="chunk_size deve essere almeno 1")
 
     # ── Leggi contenuto CSV ───────────────────────────────────────────────
     content = await file.read()
@@ -178,6 +180,7 @@ async def upload_csv(
             id_file=file_csv.id_file,
             stato=JobStatus.QUEUED.value,
             totale_righe=n_righe,
+            chunk_size=chunk_size,
         )
         db.add(esecuzione)
         db.flush()
@@ -240,6 +243,7 @@ async def upload_csv(
             "id_file":      id_file,
             "filename":     dest_name,
             "n_righe":      n_righe,
+            "chunk_size":   chunk_size,
             "modello":      modello.nome_modello,
             "tipo":         modello.tipo,
             "message":      (
@@ -264,6 +268,7 @@ async def list_jobs():
             db.query(
                 Esecuzione.id_esecuzione,
                 Esecuzione.totale_righe,
+                Esecuzione.chunk_size,
                 Task.nome,
                 Task.stato,
                 Task.prompt,
@@ -299,6 +304,7 @@ async def list_jobs():
                 "modello":      r.nome_modello,
                 "tipo":         r.tipo,
                 "totale":       totale,
+                "chunk_size":    r.chunk_size,
                 "completate":   completate,
                 "errori":       errori,
             })
