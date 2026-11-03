@@ -227,7 +227,7 @@ function renderUploadResult(data) {
         <span class="urb-icon">${data.hermes_running ? '✓' : '⚠'}</span>
         <div>
             <strong>Job #${data.id_esecuzione}</strong> — ${data.modello} (${data.tipo})
-            <br><small>${data.message}</small>
+            <br><small>${data.message} Chunk size effettivo: ${data.chunk_size}.</small>
         </div>
         <button class="btn btn-sm btn-ghost" onclick="openJobResults(${data.id_esecuzione})">
             Vedi risultati →
@@ -259,6 +259,8 @@ function renderJobsList(jobs) {
         const pct      = j.totale > 0 ? Math.round((j.completate / j.totale) * 100) : 0;
         const isDone   = j.totale > 0 && j.completate + j.errori >= j.totale;
         const hasErr   = j.errori > 0;
+        const hasResults = j.completate + j.errori > 0;
+        const canDownload = isDone || (j.stato === 'Annullato' && hasResults);
         
         let statusCls = 'pending';
         let statusLbl = '⟳ In corso…';
@@ -266,6 +268,9 @@ function renderJobsList(jobs) {
         if (j.stato === 'Fallito') {
             statusCls = 'error';
             statusLbl = '❌ Fallito';
+        } else if (j.stato === 'Annullato') {
+            statusCls = 'partial';
+            statusLbl = '⏹ Annullato';
         } else if (j.stato === 'Rimandato') {
             statusCls = 'partial';
             statusLbl = '⏸ Rimandato';
@@ -303,23 +308,23 @@ function renderJobsList(jobs) {
                 <button class="model-action-btn" onclick="openJobResults(${j.id_esecuzione})">
                     Risultati
                 </button>
-                ${isDone ? `<a class="model-action-btn" href="/api/jobs/${j.id_esecuzione}/download">⬇ CSV</a>` : ''}
-                <button class="model-action-btn" style="color: #fb7185; border-color: #fb7185; margin-left: auto;" onclick="deleteJob(${j.id_esecuzione})">
-                    Elimina
-                </button>
+                ${canDownload ? `<a class="model-action-btn" href="/api/jobs/${j.id_esecuzione}/download">⬇ CSV</a>` : ''}
+                ${['In attesa', 'In corso', 'Rimandato'].includes(j.stato) ? `
+                <button class="model-action-btn" style="color: #fb7185; border-color: #fb7185; margin-left: auto;" onclick="cancelJob(${j.id_esecuzione})">
+                    Annulla
+                </button>` : ''}
             </div>
         </div>`;
     }).join('');
 }
 
-window.deleteJob = async function(id) {
-    if (!confirm(`Vuoi davvero eliminare definitivamente il Job #${id}?`)) return;
+window.cancelJob = async function(id) {
+    if (!confirm(`Vuoi annullare il Job #${id}? I risultati già prodotti saranno conservati.`)) return;
     try {
-        const res = await fetch(`/api/jobs/${id}`, { method: 'DELETE' });
+        const res = await fetch(`/api/jobs/${id}/cancel`, { method: 'POST' });
         const data = await res.json();
         if (res.ok) {
-            if (typeof showToast === 'function') showToast('Job eliminato con successo', 'success');
-            if (currentJobId === id) closeJobResults();
+            if (typeof showToast === 'function') showToast(data.message || 'Annullamento richiesto', 'success');
             loadJobs();
         } else {
             if (typeof showToast === 'function') showToast(`Errore: ${data.detail || data.message}`, 'error');

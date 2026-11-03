@@ -39,6 +39,13 @@ class TestConfigDefaults:
         assert isinstance(MAX_RETRIES, int)
         assert MAX_RETRIES >= 0
 
+    def test_orphan_grace_default(self):
+        """La finestra di pubblicazione deve essere un intero non negativo."""
+        from src.core.config import ORPHAN_GRACE_SECONDS
+
+        assert isinstance(ORPHAN_GRACE_SECONDS, int)
+        assert ORPHAN_GRACE_SECONDS >= 0
+
     def test_db_host_default(self):
         """DB_HOST deve avere un default non vuoto."""
         from src.core.config import DB_HOST
@@ -51,11 +58,23 @@ class TestConfigDefaults:
         assert DB_PORT.isdigit()
 
     def test_paths_are_path_instances(self):
-        """INBOX, ARCHIVE e FAILED devono essere istanze di pathlib.Path."""
-        from src.core.config import INBOX, ARCHIVE, FAILED
+        """Le directory del ciclo di vita devono essere pathlib.Path."""
+        from src.core.config import (
+            DATA_ROOT,
+            INBOX,
+            PROCESSING,
+            ARCHIVE,
+            FAILED,
+            INTERRUPTED,
+            CANCELLED,
+        )
+        assert isinstance(DATA_ROOT, Path)
         assert isinstance(INBOX, Path)
+        assert isinstance(PROCESSING, Path)
         assert isinstance(ARCHIVE, Path)
         assert isinstance(FAILED, Path)
+        assert isinstance(INTERRUPTED, Path)
+        assert isinstance(CANCELLED, Path)
 
     def test_local_ai_base_url_default(self):
         """LOCAL_AI_BASE_URL deve iniziare con 'http'."""
@@ -72,37 +91,55 @@ class TestConfigDefaults:
 class TestInitDirectories:
     """Verifica che init_directories crei le cartelle necessarie."""
 
-    def test_creates_inbox_archive_failed(self, tmp_path, monkeypatch):
-        """Tutte e tre le directory devono essere create se non esistono."""
+    def test_creates_lifecycle_directories(self, tmp_path, monkeypatch):
+        """Tutte le directory del ciclo di vita devono essere create."""
         inbox = tmp_path / "inbox"
+        processing = tmp_path / "processing"
         archive = tmp_path / "archive"
         failed = tmp_path / "failed"
+        interrupted = tmp_path / "interrupted"
+        cancelled = tmp_path / "cancelled"
 
         # Sostituiamo le variabili globali con i percorsi temporanei
         import src.core.config as cfg
         monkeypatch.setattr(cfg, "INBOX", inbox)
+        monkeypatch.setattr(cfg, "PROCESSING", processing)
         monkeypatch.setattr(cfg, "ARCHIVE", archive)
         monkeypatch.setattr(cfg, "FAILED", failed)
+        monkeypatch.setattr(cfg, "INTERRUPTED", interrupted)
+        monkeypatch.setattr(cfg, "CANCELLED", cancelled)
 
         cfg.init_directories()
 
         assert inbox.is_dir()
+        assert processing.is_dir()
         assert archive.is_dir()
         assert failed.is_dir()
+        assert interrupted.is_dir()
+        assert cancelled.is_dir()
 
     def test_idempotent_when_dirs_exist(self, tmp_path, monkeypatch):
         """Se le directory esistono già, init_directories non deve sollevare eccezioni."""
         inbox = tmp_path / "inbox"
+        processing = tmp_path / "processing"
         archive = tmp_path / "archive"
         failed = tmp_path / "failed"
+        interrupted = tmp_path / "interrupted"
+        cancelled = tmp_path / "cancelled"
         inbox.mkdir()
+        processing.mkdir()
         archive.mkdir()
         failed.mkdir()
+        interrupted.mkdir()
+        cancelled.mkdir()
 
         import src.core.config as cfg
         monkeypatch.setattr(cfg, "INBOX", inbox)
+        monkeypatch.setattr(cfg, "PROCESSING", processing)
         monkeypatch.setattr(cfg, "ARCHIVE", archive)
         monkeypatch.setattr(cfg, "FAILED", failed)
+        monkeypatch.setattr(cfg, "INTERRUPTED", interrupted)
+        monkeypatch.setattr(cfg, "CANCELLED", cancelled)
 
         # Non deve sollevare FileExistsError
         cfg.init_directories()

@@ -5,6 +5,11 @@ class FatalWorkerError(Exception):
     """Eccezione sollevata per errori irreversibili del worker (es. token non valido)."""
     pass
 
+
+class WorkerCancelledError(FatalWorkerError):
+    """Interruzione cooperativa richiesta dal coordinatore del job."""
+    pass
+
 class WorkerBase(ABC):
     @abstractmethod
     def process(self, chunk: pd.DataFrame, metadata: dict) -> dict:

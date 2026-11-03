@@ -237,7 +237,7 @@ class TestProcessErrors:
                 mock_session.return_value.__enter__ = MagicMock(return_value=MagicMock())
                 mock_session.return_value.__exit__  = MagicMock(return_value=False)
                 with pytest.raises(FatalWorkerError, match="Errore DB"):
-                    worker.process(fake_chunk, {"filename": "exec_1_file_2.csv"})
+                    worker.process(fake_chunk, {"filename": "job_1_file_2.csv"})
 
     def test_invalid_token_hf_api_raises_fatal_error(self, worker, fake_chunk, good_context_hf):
         with patch("src.workers.hybrid_worker.repository.get_execution_context",
@@ -248,7 +248,7 @@ class TestProcessErrors:
             mock_session.return_value.__enter__ = MagicMock(return_value=mock_db)
             mock_session.return_value.__exit__  = MagicMock(return_value=False)
             with pytest.raises(FatalWorkerError, match="Token HuggingFace"):
-                worker.process(fake_chunk, {"filename": "exec_1_file_2.csv"})
+                worker.process(fake_chunk, {"filename": "job_1_file_2.csv"})
 
     def test_missing_endpoint_url_raises_fatal_error(self, worker, fake_chunk, good_context_local):
         ctx = {**good_context_local, "endpoint_url": None}
@@ -258,7 +258,7 @@ class TestProcessErrors:
             mock_session.return_value.__enter__ = MagicMock(return_value=mock_db)
             mock_session.return_value.__exit__  = MagicMock(return_value=False)
             with pytest.raises(FatalWorkerError, match="endpoint_url"):
-                worker.process(fake_chunk, {"filename": "exec_1_file_2.csv"})
+                worker.process(fake_chunk, {"filename": "job_1_file_2.csv"})
 
     def test_unknown_tipo_raises_fatal_error(self, worker, fake_chunk):
         ctx = {
@@ -273,7 +273,7 @@ class TestProcessErrors:
             mock_session.return_value.__enter__ = MagicMock(return_value=mock_db)
             mock_session.return_value.__exit__  = MagicMock(return_value=False)
             with pytest.raises(FatalWorkerError, match="sconosciuto"):
-                worker.process(fake_chunk, {"filename": "exec_1_file_2.csv"})
+                worker.process(fake_chunk, {"filename": "job_1_file_2.csv"})
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -301,7 +301,7 @@ class TestProcessSuccess:
              patch.object(worker, "_call_hf_api", return_value="Risposta OK") as mock_call, \
              patch("src.workers.hybrid_worker.repository.save_result"):
 
-            result = worker.process(fake_chunk, {"filename": "exec_1_file_2.csv"})
+            result = worker.process(fake_chunk, {"filename": "job_1_file_2.csv"})
 
         assert result["status"] == "ok"
         assert result["completed_rows"] == 2
@@ -323,7 +323,7 @@ class TestProcessSuccess:
              patch("src.workers.hybrid_worker.openai.OpenAI"), \
              patch("src.workers.hybrid_worker.repository.save_result"):
 
-            result = worker.process(fake_chunk, {"filename": "exec_1_file_2.csv"})
+            result = worker.process(fake_chunk, {"filename": "job_1_file_2.csv"})
 
         assert result["status"] == "ok"
         assert result["completed_rows"] == 2
@@ -355,7 +355,7 @@ class TestProcessSuccess:
         ), patch(
             "src.workers.hybrid_worker.repository.save_result"
         ):
-            worker.process(fake_chunk, {"filename": "exec_1_file_2.csv"})
+            worker.process(fake_chunk, {"filename": "job_1_file_2.csv"})
 
         first_prompt = mock_call.call_args_list[0].args[2]
         assert first_prompt.startswith("Analizza i dati.\n\nDati:\n")
@@ -376,7 +376,7 @@ class TestProcessSuccess:
              patch("src.workers.hybrid_worker.repository.save_result") as mock_save:
 
             result = worker.process(
-                fake_chunk, {"filename": "exec_1_file_2.csv"}
+                fake_chunk, {"filename": "job_1_file_2.csv"}
             )
 
         # Tutte le righe devono essere salvate con stato='Errore'
@@ -409,7 +409,7 @@ class TestProcessSuccess:
         ) as mock_save:
             with pytest.raises(FatalWorkerError, match="provider non abilitato"):
                 worker.process(
-                    fake_chunk, {"filename": "exec_1_file_2.csv"}
+                    fake_chunk, {"filename": "job_1_file_2.csv"}
                 )
 
         mock_call.assert_called_once()

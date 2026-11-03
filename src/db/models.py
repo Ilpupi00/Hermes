@@ -161,6 +161,7 @@ class Esecuzione(Base):
             name="ck_esecuzione_stato",
         ),
         CheckConstraint("totale_righe >= 0", name="ck_esecuzione_totale_righe"),
+        CheckConstraint("chunk_size > 0", name="ck_esecuzione_chunk_size"),
     )
 
     id_esecuzione = Column(Integer, Identity(), primary_key=True)
@@ -184,6 +185,9 @@ class Esecuzione(Base):
     data_fine = Column(DateTime)
     totale_righe = Column(
         Integer, nullable=False, default=0, server_default="0"
+    )
+    chunk_size = Column(
+        Integer, nullable=False, default=1000, server_default="1000"
     )
 
 

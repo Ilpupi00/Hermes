@@ -14,16 +14,25 @@ logging.basicConfig(
 
 logger= logging.getLogger("hermes")
 
-#Variabili di ambiente
-INBOX = Path(os.getenv("HERMES_INBOX", "./uploads_web"))
-ARCHIVE = Path(os.getenv("HERMES_ARCHIVE", "./processed"))
-FAILED = Path(os.getenv("HERMES_FAILED", "./failed"))
-INTERRUPTED = Path(os.getenv("HERMES_INTERRUPTED", "./interrupted"))
+# Directory del ciclo di vita. Devono condividere lo stesso filesystem affinché
+# i rename usati per pubblicazione e claim siano realmente atomici.
+DATA_ROOT = Path(os.getenv("HERMES_DATA_ROOT", "."))
+INBOX = Path(os.getenv("HERMES_INBOX", str(DATA_ROOT / "uploads_web")))
+PROCESSING = Path(os.getenv("HERMES_PROCESSING", str(DATA_ROOT / "processing")))
+ARCHIVE = Path(os.getenv("HERMES_ARCHIVE", str(DATA_ROOT / "processed")))
+FAILED = Path(os.getenv("HERMES_FAILED", str(DATA_ROOT / "failed")))
+INTERRUPTED = Path(
+    os.getenv("HERMES_INTERRUPTED", str(DATA_ROOT / "interrupted"))
+)
+CANCELLED = Path(os.getenv("HERMES_CANCELLED", str(DATA_ROOT / "cancelled")))
 
 POLL_INTERVAL = int(os.getenv("HERMES_POLL_INTERVAL", "60"))
 CHUNK_SIZE = int(os.getenv("HERMES_CHUNK_SIZE", "1000"))
 MAX_WORKERS = int(os.getenv("HERMES_MAX_WORKERS", "4"))
 MAX_RETRIES = int(os.getenv("HERMES_MAX_RETRIES", "3"))
+ORPHAN_GRACE_SECONDS = max(
+    0, int(os.getenv("HERMES_ORPHAN_GRACE_SECONDS", "300"))
+)
 
 DB_HOST = os.getenv("DB_HOST", "localhost")
 DB_NAME = os.getenv("DB_NAME", "postgres")
@@ -48,5 +57,12 @@ WORKER_CLASS = os.getenv("HERMES_WORKER_CLASS", "src.workers.hybrid_worker.Hybri
 
 
 def init_directories():
-    for directory in [INBOX, ARCHIVE, FAILED, INTERRUPTED]:
+    for directory in [
+        INBOX,
+        PROCESSING,
+        ARCHIVE,
+        FAILED,
+        INTERRUPTED,
+        CANCELLED,
+    ]:
         directory.mkdir(parents=True,exist_ok=True)

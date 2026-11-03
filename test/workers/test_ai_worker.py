@@ -126,7 +126,7 @@ class TestProcess:
 
     def test_raises_fatal_error_on_invalid_token(self, worker):
         """Se il token non è valido, deve sollevare FatalWorkerError."""
-        metadata = {"filename": "exec_1_file_1.csv", "chunk_index": 0}
+        metadata = {"filename": "job_1_file_1.csv", "chunk_index": 0}
         chunk = self._make_chunk()
 
         mock_context = {
@@ -150,7 +150,7 @@ class TestProcess:
 
     def test_process_success_returns_ok(self, worker):
         """Un flusso completo senza errori deve restituire status='ok'."""
-        metadata = {"filename": "exec_42_file_7.csv", "chunk_index": 0}
+        metadata = {"filename": "job_42_file_7.csv", "chunk_index": 0}
         chunk = self._make_chunk()
 
         mock_context = {
@@ -177,7 +177,7 @@ class TestProcess:
 
     def test_process_raises_fatal_on_db_error(self, worker):
         """Un errore nel recupero del contesto DB deve sollevare FatalWorkerError."""
-        metadata = {"filename": "exec_1_file_1.csv", "chunk_index": 0}
+        metadata = {"filename": "job_1_file_1.csv", "chunk_index": 0}
         chunk = self._make_chunk()
 
         with patch("src.workers.ai_worker.SessionLocal") as mock_session_cls, \
@@ -197,7 +197,7 @@ class TestProcess:
         cancel_event.set()
 
         metadata = {
-            "filename": "exec_5_file_3.csv",
+            "filename": "job_5_file_3.csv",
             "chunk_index": 0,
             "cancel_event": cancel_event,
         }

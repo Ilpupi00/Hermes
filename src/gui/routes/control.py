@@ -97,8 +97,8 @@ async def start_hermes(params: StartParams):
     config.POLL_INTERVAL = params.interval
     config.init_directories()
     
-    # Riporta in INBOX eventuali job rimasti a metà o falliti prima dell'avvio
-    hermes_main.recover_interrupted_jobs()
+    # Riconcilia record e file prima di avviare lo scheduler.
+    hermes_main.reconcile_jobs()
     
     hermes_main.keep_running = True
     hermes_main.dispatcher = hermes_main.Dispatcher()
@@ -121,6 +121,8 @@ async def start_hermes(params: StartParams):
 async def stop_hermes():
     # Chiude in modo "grazioso" (Graceful Shutdown)
     hermes_main.keep_running = False
+    interrupted_jobs = hermes_main.interrupt_active_jobs()
     if hermes_main.dispatcher:
         hermes_main.dispatcher.shutdown()
-    return {"status": "stopped"}
+    hermes_main.dispatcher = None
+    return {"status": "stopped", "interrupted_jobs": interrupted_jobs}
