@@ -10,10 +10,12 @@
 
 Hermes is an **independent background process** that watches a shared inbox folder, reads CSV files in memory-safe chunks, and dispatches work to a thread pool of AI workers — completely decoupled from any Web App upstream.
 
-The `v0.1.0` baseline has been verified from a clean clone with PostgreSQL,
-Alembic, Hugging Face Chat Completion and parameterized CSV prompts. Its suite
-contained 245 tests with 74% overall coverage. The current development suite
-contains 277 tests.
+The `v0.2.0` release candidate has been verified from a clean clone with
+PostgreSQL, Alembic `0002`, Hugging Face Chat Completion and 277 automated
+tests. It adds the shared PostgreSQL/filesystem contract, idempotent recovery,
+startup reconciliation, cooperative cancellation and per-job chunk sizing.
+The previous `v0.1.0` baseline remains the recorded 245-test, 74%-coverage
+reference point.
 
 ```
 INBOX ──► processing ──► ThreadPoolExecutor ──► Generative AI API
@@ -599,12 +601,14 @@ they must be updated when tests or source modules change.
 - [x] Docker + Docker Compose clean-room startup
 - [x] Parameterized prompts persisted as CSV-column mappings
 - [x] Hugging Face Chat Completion through Featherless AI
-- [x] Automated baseline suite (245 tests, 74% overall coverage at `e18a80b`)
+- [x] `v0.1.0` baseline suite (245 tests, 74% overall coverage at `e18a80b`)
 - [x] Split active `processing` storage from the successful `processed` archive
 - [x] Formalize the PostgreSQL/filesystem contract with `hermes-webapp`
 - [x] Persist replayed row results idempotently after recovery
 - [x] Reconcile orphaned jobs and safe DB/filesystem mismatches at startup
 - [x] Cooperative job cancellation with terminal state and retained results
+- [x] Per-job chunk size persisted by Alembic `0002` and decoupled from workers
+- [x] `v0.2.0` clean-room release gate (277 tests and manual cancellation flow)
 - [ ] Benchmark and harden local inference on Apple Silicon
 
 ---
