@@ -92,14 +92,6 @@ async def upload_csv(
             reader.fieldnames,
             rows,
         )
-        
-        # ── Auto-tuning del chunk_size per parallelismo ottimale ──
-        num_workers = config.MAX_WORKERS
-        if num_workers > 0 and n_righe > 0:
-            optimal_chunk = max(1, n_righe // (num_workers * 2))
-            if optimal_chunk < chunk_size:
-                config.logger.info(f"Auto-tuning chunk_size da {chunk_size} a {optimal_chunk} per massimizzare parallelismo (righe={n_righe}, workers={num_workers})")
-                chunk_size = optimal_chunk
 
     except PromptTemplateError as e:
         raise HTTPException(status_code=422, detail=str(e))
