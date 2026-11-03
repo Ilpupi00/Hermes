@@ -13,7 +13,7 @@ Hermes is an **independent background process** that watches a shared inbox fold
 The `v0.1.0` baseline has been verified from a clean clone with PostgreSQL,
 Alembic, Hugging Face Chat Completion and parameterized CSV prompts. Its suite
 contained 245 tests with 74% overall coverage. The current development suite
-contains 275 tests.
+contains 277 tests.
 
 ```
 INBOX ──► processing ──► ThreadPoolExecutor ──► Generative AI API
@@ -340,13 +340,13 @@ All settings are loaded from environment variables or a `.env` file in the proje
 | `HERMES_MAX_WORKERS`          | `4`                   | Max parallel threads in the ThreadPoolExecutor      |
 | `HERMES_MAX_RETRIES`          | `3`                   | Max retry attempts before moving to failed          |
 | `HERMES_ORPHAN_GRACE_SECONDS` | `300`                 | Grace period before failing a DB job without a file |
-
-The upload value is treated as the requested maximum. Hermes may lower it to
-keep the configured workers supplied, then persists that effective value on
-the execution. The scheduler always uses the persisted value; the environment
-setting remains the default and a compatibility fallback for legacy jobs.
 | `HERMES_WORKER_CLASS`         | `src.workers.hybrid_worker.HybridWorker` | Worker import path              |
 | `HERMES_AI_BASE_URL`          | local URL             | Endpoint for an OpenAI-compatible local server      |
+
+The upload value is persisted unchanged on the execution and does not depend
+on how many workers happen to be active in the Control Room. The scheduler
+always uses this job-specific value. `HERMES_CHUNK_SIZE` remains the form
+default and a compatibility fallback for legacy jobs.
 
 The complete, sanitized template is tracked in `.env.example`. The legacy
 variable `HUGGING_FACE` is temporarily accepted, but new configurations must

@@ -70,6 +70,7 @@ def test_upload_persists_file_rows_and_execution_link(db_session, tmp_path):
         patch("src.gui.routes.upload.config.FAILED", failed),
         patch("src.gui.routes.upload.config.INTERRUPTED", interrupted),
         patch("src.gui.routes.upload.config.CANCELLED", cancelled),
+        patch("src.gui.routes.upload.config.MAX_WORKERS", 99),
     ):
         response = client.post(
             "/api/upload",
@@ -111,7 +112,8 @@ def test_upload_persists_file_rows_and_execution_link(db_session, tmp_path):
     assert execution.id_file == file_csv.id_file
     assert execution.totale_righe == 3
     assert execution.chunk_size == payload["chunk_size"]
-    assert execution.chunk_size == 1
+    # Il valore del job non dipende dal numero di worker del processo web.
+    assert execution.chunk_size == 3
     assert [row.indice_riga for row in rows] == [0, 1, 2]
     assert '"review": "ottimo"' in rows[0].contenuto
     assert len(mappings) == 1
